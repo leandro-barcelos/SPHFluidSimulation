@@ -1,10 +1,13 @@
 using System;
 using System.Collections.Generic;
 using UnityEngine;
+using UnityEngine.Rendering;
 using Random = UnityEngine.Random;
 
 public class SPH : MonoBehaviour
 {
+    const int NumThreads = 8;
+
     #region Auxiliary Structures
     private struct MeshProperties
     {
@@ -20,6 +23,8 @@ public class SPH : MonoBehaviour
     }
     #endregion
 
+    #region Public
+
     [Header("Parameters")]
     [Range(0f, 1f / 60f)] public float timeStep = 1f / 60f;
     public int desiredParticleCount = 1000;
@@ -29,6 +34,20 @@ public class SPH : MonoBehaviour
     public float occlusionRange;
     public Material particleMaterial;
     public bool renderParticles;
+
+    [Header("Distance")]
+    public int fastSweepingPasses = 3;
+    public int gridResolution = 64;
+
+    #endregion
+
+    #region Private
+
+    // Distance
+    private int gridResolutionX, gridResolutionY, gridResolutionZ;
+    private RenderTexture distanceTexture;
+    private float cellSize;
+    private MeshFilter meshFilter;
 
     // Mouse
     private Vector3 lastMousePlane = Vector3.zero;
@@ -45,8 +64,31 @@ public class SPH : MonoBehaviour
     private ComputeBuffer _particleMeshPropertiesBuffer, _particleArgsBuffer;
     private Bounds _bounds;
 
+    // Shaders
+    private ComputeShader distanceShader, clearShader;
+
+    #endregion
+
+    #region Unity Functions
+
     private void Start()
     {
+        InitShaders();
+
+        meshFilter = gameObject.GetComponent<MeshFilter>();
+
+        var scale = transform.localScale;
+
+        cellSize = scale.y / gridResolution;
+
+        gridResolutionY = gridResolution;
+        gridResolutionX = Mathf.CeilToInt(scale.x / cellSize);
+        gridResolutionZ = Mathf.CeilToInt(scale.z / cellSize);
+
+        transform.localScale = new(gridResolutionX * cellSize, scale.y, gridResolutionZ * cellSize);
+
+        distanceTexture = CreateRenderTexture3D(gridResolutionX, gridResolutionY, gridResolutionZ, RenderTextureFormat.RFloat);
+
         camera = Camera.main;
         cameraOrbit = camera.GetComponent<CameraOrbit>();
         InitializeBoxes();
@@ -59,6 +101,33 @@ public class SPH : MonoBehaviour
 
         // Adjust particle radius based on grid resolution
         Vector3[] particlesPositions = CreateParticlePositions(particleCount);
+
+        UpdateDistanceTexture(meshFilter);
+    }
+
+    private void Update()
+    {
+        UpdateMouse(out Vector3 worldSpaceMouseRay, out Vector3 worldMouseVelocity);
+
+        if (renderParticles)
+            Graphics.DrawMeshInstancedIndirect(_particleMesh, 0, particleMaterial, _bounds, _particleArgsBuffer);
+    }
+
+    private void OnDestroy()
+    {
+        _particleMeshPropertiesBuffer?.Release();
+        _particleArgsBuffer?.Release();
+        distanceTexture.Release();
+    }
+
+    #endregion
+
+    #region Initializations
+
+    private void InitShaders()
+    {
+        distanceShader = Resources.Load<ComputeShader>("Distance");
+        clearShader = Resources.Load<ComputeShader>("Clear");
     }
 
     private Vector3[] CreateParticlePositions(int particleCount)
@@ -159,19 +228,10 @@ public class SPH : MonoBehaviour
         }
     }
 
-    private void Update()
-    {
-        UpdateMouse(out Vector3 worldSpaceMouseRay, out Vector3 worldMouseVelocity);
 
-        if (renderParticles)
-            Graphics.DrawMeshInstancedIndirect(_particleMesh, 0, particleMaterial, _bounds, _particleArgsBuffer);
-    }
+    #endregion
 
-    private void OnDestroy()
-    {
-        _particleMeshPropertiesBuffer?.Release();
-        _particleArgsBuffer?.Release();
-    }
+    #region Update
 
     private void UpdateMouse(out Vector3 worldSpaceMouseRay, out Vector3 worldMouseVelocity)
     {
@@ -190,4 +250,88 @@ public class SPH : MonoBehaviour
             }
         }
     }
+
+    private void UpdateDistanceTexture(MeshFilter meshFilter)
+    {
+        ClearTexture(distanceTexture);
+
+        int triangleCount = meshFilter.mesh.triangles.Length;
+        ComputeBuffer triangles = new(triangleCount, sizeof(int));
+        triangles.SetData(meshFilter.mesh.triangles);
+        ComputeBuffer vertices = new(meshFilter.mesh.vertexCount, sizeof(float) * 3);
+        vertices.SetData(meshFilter.mesh.vertices);
+
+        distanceShader.SetMatrix(ShaderIDs.MeshTransform, meshFilter.transform.localToWorldMatrix);
+        distanceShader.SetVector(ShaderIDs.SimOrigin, transform.position - transform.localScale / 2);
+        distanceShader.SetVector(ShaderIDs.GridResolution, new(gridResolutionX, gridResolutionY, gridResolutionZ));
+        distanceShader.SetFloat(ShaderIDs.CellSize, cellSize);
+        distanceShader.SetInt(ShaderIDs.TriangleCount, triangleCount);
+
+        distanceShader.SetTexture(0, ShaderIDs.Distance, distanceTexture);
+        distanceShader.SetBuffer(0, ShaderIDs.Vertices, vertices);
+        distanceShader.SetBuffer(0, ShaderIDs.Triangles, triangles);
+
+        int threadGroupsX = Mathf.CeilToInt((float)gridResolutionX / NumThreads);
+        int threadGroupsY = Mathf.CeilToInt((float)gridResolutionY / NumThreads);
+        int threadGroupsZ = Mathf.CeilToInt((float)gridResolutionZ / NumThreads);
+
+        distanceShader.Dispatch(0, threadGroupsX, threadGroupsY, threadGroupsZ);
+
+        triangles.Release();
+        vertices.Release();
+    }
+
+    #endregion
+
+    #region Texture Helpers
+
+    private void Swap(ref RenderTexture a, ref RenderTexture b)
+    {
+        (b, a) = (a, b);
+    }
+
+    private static RenderTexture CreateRenderTexture2D(int width, int height, RenderTextureFormat format)
+    {
+        var rt = new RenderTexture(width, height, 0, format)
+        {
+            enableRandomWrite = true,
+            filterMode = FilterMode.Point,
+            wrapMode = TextureWrapMode.Clamp
+        };
+        rt.Create();
+        return rt;
+    }
+
+    private static RenderTexture CreateRenderTexture3D(int width, int height, int depth, RenderTextureFormat format)
+    {
+        var rt = new RenderTexture(width, height, 0, format)
+        {
+            dimension = TextureDimension.Tex3D,
+            volumeDepth = depth,
+            enableRandomWrite = true,
+            filterMode = FilterMode.Bilinear,
+            wrapMode = TextureWrapMode.Clamp
+        };
+        rt.Create();
+        return rt;
+    }
+
+    private static Texture2D CreateTexture2D(int width, int height, Color[] colors)
+    {
+        var texture = new Texture2D(width, height, TextureFormat.RGBAFloat, false);
+        texture.SetPixels(colors);
+        texture.Apply();
+        return texture;
+    }
+
+    private void ClearTexture(RenderTexture texture)
+    {
+        clearShader.SetTexture(0, ShaderIDs.Texture, texture);
+        int threadGroupsX = Mathf.CeilToInt((float)texture.width / NumThreads);
+        int threadGroupsY = Mathf.CeilToInt((float)texture.height / NumThreads);
+        int threadGroupsZ = Mathf.CeilToInt((float)texture.volumeDepth / NumThreads);
+        clearShader.Dispatch(0, threadGroupsX, threadGroupsY, threadGroupsZ);
+    }
+
+    #endregion
 }

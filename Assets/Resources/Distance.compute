@@ -1,0 +1,99 @@
+#define NUM_THREADS 8
+
+static const float epsilon = 1e-6;
+static const float infinity = 1e6;
+
+#pragma enable_d3d11_debug_symbols
+
+// Buffers
+RWTexture3D<float> _Distance;
+StructuredBuffer<float3> _Vertices;
+StructuredBuffer<int> _Triangles;
+
+// Parameters
+float4x4 _MeshTransform;
+float3 _SimOrigin;
+float3 _GridResolution;
+float _CellSize;
+int _TriangleCount;
+
+float DistanceToTriangle(float3 p, float3 a, float3 b, float3 c)
+{
+    // Compute vectors
+    float3 ab = b - a;
+    float3 ac = c - a;
+    float3 ap = p - a;
+
+    // Compute dot products
+    float d1 = dot(ab, ap);
+    float d2 = dot(ac, ap);
+    if (d1 <= 0.0 && d2 <= 0.0) return length(ap); // Barycentric coordinates (1,0,0)
+
+    float3 bp = p - b;
+    float d3 = dot(ab, bp);
+    float d4 = dot(ac, bp);
+    if (d3 >= 0.0 && d4 <= d3) return length(bp); // Barycentric coordinates (0,1,0)
+
+    float vc = d1 * d4 - d3 * d2;
+    if (vc <= 0.0 && d1 >= 0.0 && d3 <= 0.0) {
+        float v = d1 / (d1 - d3);
+        return length(ap + v * ab); // Barycentric coordinates (1-v,v,0)
+    }
+
+    float3 cp = p - c;
+    float d5 = dot(ab, cp);
+    float d6 = dot(ac, cp);
+    if (d6 >= 0.0 && d5 <= d6) return length(cp); // Barycentric coordinates (0,0,1)
+
+    float vb = d5 * d2 - d1 * d6;
+    if (vb <= 0.0 && d2 >= 0.0 && d6 <= 0.0) {
+        float w = d2 / (d2 - d6);
+        return length(ap + w * ac); // Barycentric coordinates (1-w,0,w)
+    }
+
+    float va = d3 * d6 - d5 * d4;
+    if (va <= 0.0 && (d4 - d3) >= 0.0 && (d5 - d6) >= 0.0) {
+        float w = (d4 - d3) / ((d4 - d3) + (d5 - d6));
+        return length(bp + w * (c - b)); // Barycentric coordinates (0,1-w,w)
+    }
+
+    // Compute the normal of the triangle
+    float denom = 1.0 / (va + vb + vc);
+    float v = vb * denom;
+    float w = vc * denom;
+    float3 projection = a + ab * v + ac * w; // Barycentric coordinates (1-v-w,v,w)
+    return length(p - projection);
+}
+
+#pragma kernel CSMain
+
+[numthreads(NUM_THREADS, NUM_THREADS, NUM_THREADS)]
+void CSMain(uint3 id : SV_DispatchThreadID)
+{
+    // Check if we're within grid bounds
+    if (any(id >= uint3(_GridResolution)))
+        return;
+
+    // Calculate world position of this cell
+    float3 cellPos = _SimOrigin + (id + 0.5f) * _CellSize;
+    
+    // Initialize minimum distance to infinity
+    float minDistance = infinity;
+
+    // Iterate through all triangles
+    for (int i = 0; i < _TriangleCount; i++)
+    {
+        // Get triangle vertices and transform them
+        int idx = i * 3;
+        float3 v1 = mul(_MeshTransform, float4(_Vertices[_Triangles[idx]], 1.0f)).xyz;
+        float3 v2 = mul(_MeshTransform, float4(_Vertices[_Triangles[idx + 1]], 1.0f)).xyz;
+        float3 v3 = mul(_MeshTransform, float4(_Vertices[_Triangles[idx + 2]], 1.0f)).xyz;
+
+        // Calculate distance to this triangle
+        float dist = DistanceToTriangle(cellPos, v1, v2, v3);
+        minDistance = min(minDistance, dist);
+    }
+
+    // Write the minimum distance to the texture
+    _Distance[id] = minDistance;
+}

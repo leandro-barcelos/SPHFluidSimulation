@@ -1,0 +1,11 @@
+#pragma kernel CSMain
+
+#define NUM_THREADS 8
+
+RWTexture3D<uint> _Texture;
+
+[numthreads(NUM_THREADS, NUM_THREADS, NUM_THREADS)]
+void CSMain(uint3 id : SV_DispatchThreadID)
+{
+    _Texture[id] = 0;
+}
