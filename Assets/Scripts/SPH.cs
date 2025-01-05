@@ -47,6 +47,9 @@ public class SPH : MonoBehaviour
     // Particle
     private float particleRadius;
     private float effectiveRadius;
+    private RenderTexture particlePositionTexture;
+    private int particleWidth;
+    private int particleHeight;
 
     // Wall Weight
     private RenderTexture wallWeightTexture;
@@ -56,6 +59,12 @@ public class SPH : MonoBehaviour
     private RenderTexture distanceTexture;
     private float cellSize;
     private MeshFilter meshFilter;
+
+    // Bucket
+    private RenderTexture bucketTexture;
+    private ComputeBuffer depthBuffer;
+    private ComputeBuffer stencilBuffer;
+    private ComputeShader bucketShader;
 
     // Mouse
     private Vector3 lastMousePlane = Vector3.zero;
@@ -96,19 +105,41 @@ public class SPH : MonoBehaviour
         transform.localScale = new(gridResolutionX * cellSize, scale.y, gridResolutionZ * cellSize);
 
         distanceTexture = CreateRenderTexture3D(gridResolutionX, gridResolutionY, gridResolutionZ, RenderTextureFormat.RFloat);
+        bucketTexture = CreateRenderTexture3D(gridResolutionX, gridResolutionY, gridResolutionZ, RenderTextureFormat.ARGBFloat);
 
         camera = Camera.main;
         cameraOrbit = camera.GetComponent<CameraOrbit>();
         InitializeBoxes();
 
         // Adjust particle resolution for better distribution
-        var particlesWidth = Mathf.NextPowerOfTwo(Mathf.CeilToInt(Mathf.Sqrt(desiredParticleCount)));
-        var particlesHeight = Mathf.CeilToInt((float)desiredParticleCount / particlesWidth);
+        particleWidth = Mathf.NextPowerOfTwo(Mathf.CeilToInt(Mathf.Sqrt(desiredParticleCount)));
+        particleHeight = Mathf.CeilToInt((float)desiredParticleCount / particleWidth);
 
-        var particleCount = particlesWidth * particlesHeight;
+        var particleCount = particleWidth * particleHeight;
+
+        // Initialize buffers for bucket generation
+        depthBuffer = new ComputeBuffer(gridResolutionX * gridResolutionY * gridResolutionZ, sizeof(float));
+        stencilBuffer = new ComputeBuffer(gridResolutionX * gridResolutionY * gridResolutionZ, sizeof(uint));
+
+        // Create particle position texture
+        particlePositionTexture = CreateRenderTexture2D(particleWidth, particleHeight, RenderTextureFormat.ARGBFloat);
 
         // Adjust particle radius based on grid resolution
         Vector3[] particlesPositions = CreateParticlePositions(particleCount);
+        Texture2D particlePositionTexture2D = new(particleWidth, particleHeight, TextureFormat.RGBAFloat, false);
+        Color[] particleColors = new Color[particleCount];
+
+        for (int i = 0; i < particleCount; i++)
+        {
+            Vector3 pos = particlesPositions[i];
+            particleColors[i] = new Color(pos.x, pos.y, pos.z, 1.0f);
+        }
+
+        particlePositionTexture2D.SetPixels(particleColors);
+        particlePositionTexture2D.Apply();
+
+        Graphics.Blit(particlePositionTexture2D, particlePositionTexture);
+        Destroy(particlePositionTexture2D);
 
         UpdateDistanceTexture(meshFilter);
         InitializeWallWeights();
@@ -117,6 +148,7 @@ public class SPH : MonoBehaviour
     private void Update()
     {
         UpdateMouse(out Vector3 worldSpaceMouseRay, out Vector3 worldMouseVelocity);
+        UpdateBucketTexture();
 
         if (renderParticles)
             Graphics.DrawMeshInstancedIndirect(_particleMesh, 0, particleMaterial, _bounds, _particleArgsBuffer);
@@ -127,6 +159,10 @@ public class SPH : MonoBehaviour
         _particleMeshPropertiesBuffer?.Release();
         _particleArgsBuffer?.Release();
         distanceTexture.Release();
+        bucketTexture.Release();
+        depthBuffer?.Release();
+        stencilBuffer?.Release();
+        particlePositionTexture.Release();
     }
 
     #endregion
@@ -137,6 +173,7 @@ public class SPH : MonoBehaviour
     {
         distanceShader = Resources.Load<ComputeShader>("Distance");
         clearShader = Resources.Load<ComputeShader>("Clear");
+        bucketShader = Resources.Load<ComputeShader>("Bucket");
     }
 
     private Vector3[] CreateParticlePositions(int particleCount)
@@ -358,6 +395,33 @@ public class SPH : MonoBehaviour
 
         triangles.Release();
         vertices.Release();
+    }
+
+    private void UpdateBucketTexture()
+    {
+        ClearTexture(bucketTexture);
+
+        // Set common parameters
+        bucketShader.SetVector(ShaderIDs.SimOrigin, transform.position - transform.localScale / 2);
+        bucketShader.SetVector(ShaderIDs.ParticleResolution, new Vector2(particleWidth, particleHeight));
+        bucketShader.SetVector(ShaderIDs.GridResolution, new Vector3(gridResolutionX, gridResolutionY, gridResolutionZ));
+        bucketShader.SetFloat(ShaderIDs.CellSize, cellSize);
+
+        // Set textures and buffers
+        bucketShader.SetTexture(0, "_Bucket", bucketTexture);
+        bucketShader.SetTexture(0, "_ParticlePosition", particlePositionTexture);
+        bucketShader.SetBuffer(0, "_DepthBuffer", depthBuffer);
+        bucketShader.SetBuffer(0, "_StencilBuffer", stencilBuffer);
+
+        int threadGroupsX = Mathf.CeilToInt((float)particleWidth / NumThreads);
+        int threadGroupsY = Mathf.CeilToInt((float)particleHeight / NumThreads);
+
+        // Execute 4 passes for RGBA channels
+        for (int pass = 0; pass < 4; pass++)
+        {
+            bucketShader.SetInt("_Pass", pass);
+            bucketShader.Dispatch(0, threadGroupsX, threadGroupsY, 1);
+        }
     }
 
     #endregion
