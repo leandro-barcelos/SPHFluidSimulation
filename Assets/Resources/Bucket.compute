@@ -4,7 +4,7 @@
 #pragma enable_d3d11_debug_symbols
 
 // Buffers
-Texture2D<float4> _ParticlePosition;
+Texture2D<float4> _ParticlePositionTexture;
 RWStructuredBuffer<uint> _Bucket;
 
 // Parameters
@@ -23,7 +23,7 @@ void CSMain(uint3 id : SV_DispatchThreadID)
         return;
 
     // Read particle position from texture
-    float3 pos = _ParticlePosition[id.xy].xyz;
+    float3 pos = _ParticlePositionTexture[id.xy].xyz;
     float3 normalizedPos = (pos - _SimOrigin) / _SimScale;
     uint3 index_3d = uint3(normalizedPos * _BucketResolution);
     uint index = index_3d.x + index_3d.y * _BucketResolution.x + index_3d.z * _BucketResolution.x * _BucketResolution.y;

@@ -146,7 +146,7 @@ public class SPH : MonoBehaviour
     private void Update()
     {
         UpdateMouse(out Vector3 worldSpaceMouseRay, out Vector3 worldMouseVelocity);
-        UpdateBucketTexture();
+        BucketGeneration();
 
         if (renderParticles)
             Graphics.DrawMeshInstancedIndirect(_particleMesh, 0, particleMaterial, _bounds, _particleArgsBuffer);
@@ -393,7 +393,7 @@ public class SPH : MonoBehaviour
         vertices.Release();
     }
 
-    private void UpdateBucketTexture()
+    private void BucketGeneration()
     {
         // Clear bucket buffer with particle count as empty marker
         int totalBucketSize = gridResolutionX * gridResolutionY * gridResolutionZ * MaxParticlesPerVoxel;
@@ -403,12 +403,12 @@ public class SPH : MonoBehaviour
         bucketBuffer.SetData(clearData);
 
         // Set shader parameters
-        bucketShader.SetBuffer(0, "_Bucket", bucketBuffer);
-        bucketShader.SetTexture(0, "_ParticlePosition", particlePositionTexture);
-        bucketShader.SetVector("_ParticleResolution", new Vector2(particleWidth, particleHeight));
-        bucketShader.SetVector("_BucketResolution", new(gridResolutionX, gridResolutionY, gridResolutionZ));
-        bucketShader.SetVector("_SimOrigin", transform.position - transform.localScale / 2);
-        bucketShader.SetVector("_SimScale", transform.localScale);
+        bucketShader.SetBuffer(0, ShaderIDs.Bucket, bucketBuffer);
+        bucketShader.SetTexture(0, ShaderIDs.ParticlePositionTexture, particlePositionTexture);
+        bucketShader.SetVector(ShaderIDs.ParticleResolution, new Vector2(particleWidth, particleHeight));
+        bucketShader.SetVector(ShaderIDs.BucketResolution, new(gridResolutionX, gridResolutionY, gridResolutionZ));
+        bucketShader.SetVector(ShaderIDs.SimOrigin, transform.position - transform.localScale / 2);
+        bucketShader.SetVector(ShaderIDs.SimScale, transform.localScale);
 
         // Calculate dispatch size for 2D thread groups
         int threadGroupsX = Mathf.CeilToInt((float)particleWidth / 32);

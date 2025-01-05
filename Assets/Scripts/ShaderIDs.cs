@@ -46,4 +46,7 @@ public class ShaderIDs
     public static readonly int Vertices = Shader.PropertyToID("_Vertices");
     public static readonly int Triangles = Shader.PropertyToID("_Triangles");
     public static readonly int Direction = Shader.PropertyToID("_Direction");
+    public static readonly int Bucket = Shader.PropertyToID("_Bucket");
+    public static readonly int BucketResolution = Shader.PropertyToID("_BucketResolution");
+    public static readonly int SimScale = Shader.PropertyToID("_SimScale");
 }
