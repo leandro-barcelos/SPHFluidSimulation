@@ -29,6 +29,7 @@ public class SPH : MonoBehaviour
     [Range(0f, 1f / 60f)] public float timeStep = 1f / 60f;
     public int desiredParticleCount = 1000;
     [Range(0.01f, 1f)] public float spawnAreaFillRate;
+    [Range(3, 1000)] public int wallWeightNumSamples = 100;
 
     [Header("Rendering")]
     public float occlusionRange;
@@ -42,6 +43,13 @@ public class SPH : MonoBehaviour
     #endregion
 
     #region Private
+
+    // Particle
+    private float particleRadius;
+    private float effectiveRadius;
+
+    // Wall Weight
+    private RenderTexture wallWeightTexture;
 
     // Distance
     private int gridResolutionX, gridResolutionY, gridResolutionZ;
@@ -103,6 +111,7 @@ public class SPH : MonoBehaviour
         Vector3[] particlesPositions = CreateParticlePositions(particleCount);
 
         UpdateDistanceTexture(meshFilter);
+        InitializeWallWeights();
     }
 
     private void Update()
@@ -163,7 +172,8 @@ public class SPH : MonoBehaviour
         }
 
         var particleVol = totalVolume / desiredParticleCount;
-        var particleRadius = Mathf.Pow(3 * particleVol / (4 * Mathf.PI), 1f / 3f) * spawnAreaFillRate;
+        particleRadius = Mathf.Pow(3 * particleVol / (4 * Mathf.PI), 1f / 3f) * spawnAreaFillRate;
+        effectiveRadius = 4 * particleRadius;
 
         Vector3 particleScale = new(particleRadius * 2, particleRadius * 2, particleRadius * 2);
 
@@ -228,6 +238,75 @@ public class SPH : MonoBehaviour
         }
     }
 
+    private void InitializeWallWeights()
+    {
+        var wallParticles = InitializeWallParticles();
+
+        Color[] weights = new Color[wallWeightNumSamples];
+
+        var weightConstant = 315f / (64 * Mathf.PI * Mathf.Pow(effectiveRadius, 9));
+        var sqrEffectiveRadius = effectiveRadius * effectiveRadius;
+
+        var step = effectiveRadius / wallWeightNumSamples;
+        var position = new Vector3(effectiveRadius, effectiveRadius, effectiveRadius);
+
+        for (var i = 0; i < wallWeightNumSamples; i++)
+        {
+            foreach (var particle in wallParticles)
+            {
+                var distance = Vector3.Distance(position, particle);
+
+                if (distance <= effectiveRadius)
+                {
+                    weights[i] += new Color(weightConstant * Mathf.Pow(sqrEffectiveRadius - (distance * distance), 3), 0f, 0f);
+                }
+            }
+
+            position.y += step;
+        }
+
+        wallWeightTexture = CreateRenderTexture2D(wallWeightNumSamples, 1, RenderTextureFormat.RFloat);
+        Texture2D wallWeightTexture2D = CreateTexture2D(wallWeightNumSamples, 1, weights, TextureFormat.RFloat);
+
+        Graphics.Blit(wallWeightTexture2D, wallWeightTexture);
+        Destroy(wallWeightTexture2D);
+    }
+
+    private List<Vector3> InitializeWallParticles()
+    {
+        Bounds wallBounds = new(
+            new Vector3(effectiveRadius, effectiveRadius / 2f, effectiveRadius),
+            new Vector3(2 * effectiveRadius, effectiveRadius, 2 * effectiveRadius) + new Vector3(particleRadius / 2, particleRadius / 2, particleRadius / 2)
+        );
+
+        var numParticles = Mathf.FloorToInt(wallBounds.size.x / (particleRadius * 2));
+
+        var spaceBetween = (wallBounds.size.x - numParticles * (particleRadius * 2)) / (numParticles - 1);
+
+        List<Vector3> wallParticles = new List<Vector3>();
+
+        for (int i = 0; i < numParticles; i++)
+        {
+            for (int j = 0; j < numParticles / 2; j++)
+            {
+                for (int k = 0; k < numParticles; k++)
+                {
+                    Vector3 position = new(
+                        wallBounds.min.x + i * (particleRadius * 2 + spaceBetween),
+                        wallBounds.max.y - j * (particleRadius * 2 + spaceBetween),
+                        wallBounds.min.z + k * (particleRadius * 2 + spaceBetween)
+                    );
+
+                    if (wallBounds.Contains(position))
+                    {
+                        wallParticles.Add(position);
+                    }
+                }
+            }
+        }
+
+        return wallParticles;
+    }
 
     #endregion
 
@@ -295,7 +374,7 @@ public class SPH : MonoBehaviour
         var rt = new RenderTexture(width, height, 0, format)
         {
             enableRandomWrite = true,
-            filterMode = FilterMode.Point,
+            filterMode = FilterMode.Bilinear,
             wrapMode = TextureWrapMode.Clamp
         };
         rt.Create();
@@ -315,10 +394,9 @@ public class SPH : MonoBehaviour
         rt.Create();
         return rt;
     }
-
-    private static Texture2D CreateTexture2D(int width, int height, Color[] colors)
+    private static Texture2D CreateTexture2D(int width, int height, Color[] colors, TextureFormat format)
     {
-        var texture = new Texture2D(width, height, TextureFormat.RGBAFloat, false);
+        var texture = new Texture2D(width, height, format, false);
         texture.SetPixels(colors);
         texture.Apply();
         return texture;
