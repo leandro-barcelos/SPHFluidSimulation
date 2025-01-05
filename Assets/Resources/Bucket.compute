@@ -1,124 +1,40 @@
-#define NUM_THREADS 8
+#define NUM_THREADS 32
+#define MAX_PARTICLES_PER_VOXEL 32
 
 #pragma enable_d3d11_debug_symbols
 
 // Buffers
-RWTexture3D<float4> _Bucket;
-Texture2D<float3> _ParticlePosition;
-RWStructuredBuffer<float> _DepthBuffer;
-RWStructuredBuffer<uint> _StencilBuffer;
+Texture2D<float4> _ParticlePosition;
+RWStructuredBuffer<uint> _Bucket;
 
 // Parameters
-float3 _SimOrigin;
 float2 _ParticleResolution;
-float3 _GridResolution;
-float _CellSize;
-uint _Pass; // Current rendering pass (0-3)
-
-uint3 GetGridCell(float3 position)
-{
-    float3 gridPos = (position - _SimOrigin) / _CellSize;
-    return uint3(gridPos);
-}
-
-float GetDepthValue(float3 position)
-{
-    // Use distance from origin as depth value
-    return length(position - _SimOrigin);
-}
-
-uint GetBufferIndex(uint3 gridCell)
-{
-    return gridCell.x + gridCell.y * uint(_GridResolution.x) + 
-           gridCell.z * uint(_GridResolution.x * _GridResolution.y);
-}
-
-bool DepthTest(float newDepth, uint bufferIndex)
-{
-    float currentDepth = _DepthBuffer[bufferIndex];
-    
-    if (_Pass == 0)
-    {
-        // First pass: Keep lower depth value
-        return newDepth < currentDepth;
-    }
-    else
-    {
-        // Subsequent passes: Keep greater depth value
-        return newDepth > currentDepth;
-    }
-}
-
-bool StencilTest(uint bufferIndex)
-{
-    if (_Pass == 0 || _Pass == 3)
-    {
-        // No stencil test for first and last pass
-        return true;
-    }
-    
-    uint stencilValue = _StencilBuffer[bufferIndex];
-    return stencilValue > 1;
-}
-
-void IncrementStencil(uint bufferIndex)
-{
-    if (_Pass > 0 && _Pass < 3)
-    {
-        InterlockedAdd(_StencilBuffer[bufferIndex], 1);
-    }
-}
+uint3 _BucketResolution;
+float3 _SimOrigin;
+float3 _SimScale;
 
 #pragma kernel CSMain
 
 [numthreads(NUM_THREADS, NUM_THREADS, 1)]
 void CSMain(uint3 id : SV_DispatchThreadID)
 {
-    // Check if we're within grid bounds
-    if (any(id >= uint3(_ParticleResolution, 1)))
+    // Check if we're within texture bounds
+    if (any(id.xy >= uint2(_ParticleResolution)))
         return;
 
-    // Calculate particle index
-    uint particleIndex = id.x + id.y * uint(_ParticleResolution.x);
-    
-    // Get particle position and corresponding grid cell
-    float3 position = _ParticlePosition[id.xy];
-    uint3 gridCell = GetGridCell(position);
-    
-    // Calculate buffer index for depth and stencil tests
-    uint bufferIndex = GetBufferIndex(gridCell);
-    
-    // Get depth value
-    float depth = GetDepthValue(position);
-    
-    // Perform depth and stencil tests
-    if (!DepthTest(depth, bufferIndex) || !StencilTest(bufferIndex))
-        return;
+    // Read particle position from texture
+    float3 pos = _ParticlePosition[id.xy].xyz;
+    float3 normalizedPos = (pos - _SimOrigin) / _SimScale;
+    uint3 index_3d = uint3(normalizedPos * _BucketResolution);
+    uint index = index_3d.x + index_3d.y * _BucketResolution.x + index_3d.z * _BucketResolution.x * _BucketResolution.y;
         
-    // Update depth buffer
-    _DepthBuffer[bufferIndex] = depth;
-    
-    // Increment stencil value
-    IncrementStencil(bufferIndex);
-    
-    // Write particle index to appropriate color channel based on pass
-    float4 currentValue = _Bucket[gridCell];
-    
-    switch(_Pass)
+    // Try to find an empty slot in the bucket
+    for (uint j = 0; j < MAX_PARTICLES_PER_VOXEL; j++)
     {
-        case 0: // R channel
-            currentValue.r = float(particleIndex);
-            break;
-        case 1: // G channel
-            currentValue.g = float(particleIndex);
-            break;
-        case 2: // B channel
-            currentValue.b = float(particleIndex);
-            break;
-        case 3: // A channel
-            currentValue.a = float(particleIndex);
-            break;
+        uint bucketIndex = index * MAX_PARTICLES_PER_VOXEL + j;
+        uint particleIndex = id.y * uint(_ParticleResolution.x) + id.x;
+        uint original;
+        InterlockedCompareExchange(_Bucket[bucketIndex], uint(_ParticleResolution.x * _ParticleResolution.y), particleIndex, original);
+        if (original == uint(_ParticleResolution.x * _ParticleResolution.y)) break;
     }
-    
-    _Bucket[gridCell] = currentValue;
 }

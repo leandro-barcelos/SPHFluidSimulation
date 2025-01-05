@@ -7,6 +7,7 @@ using Random = UnityEngine.Random;
 public class SPH : MonoBehaviour
 {
     const int NumThreads = 8;
+    const int MaxParticlesPerVoxel = 32;
 
     #region Auxiliary Structures
     private struct MeshProperties
@@ -61,9 +62,7 @@ public class SPH : MonoBehaviour
     private MeshFilter meshFilter;
 
     // Bucket
-    private RenderTexture bucketTexture;
-    private ComputeBuffer depthBuffer;
-    private ComputeBuffer stencilBuffer;
+    private ComputeBuffer bucketBuffer;
     private ComputeShader bucketShader;
 
     // Mouse
@@ -105,7 +104,6 @@ public class SPH : MonoBehaviour
         transform.localScale = new(gridResolutionX * cellSize, scale.y, gridResolutionZ * cellSize);
 
         distanceTexture = CreateRenderTexture3D(gridResolutionX, gridResolutionY, gridResolutionZ, RenderTextureFormat.RFloat);
-        bucketTexture = CreateRenderTexture3D(gridResolutionX, gridResolutionY, gridResolutionZ, RenderTextureFormat.ARGBFloat);
 
         camera = Camera.main;
         cameraOrbit = camera.GetComponent<CameraOrbit>();
@@ -117,9 +115,9 @@ public class SPH : MonoBehaviour
 
         var particleCount = particleWidth * particleHeight;
 
-        // Initialize buffers for bucket generation
-        depthBuffer = new ComputeBuffer(gridResolutionX * gridResolutionY * gridResolutionZ, sizeof(float));
-        stencilBuffer = new ComputeBuffer(gridResolutionX * gridResolutionY * gridResolutionZ, sizeof(uint));
+        // Initialize bucket buffer
+        int totalBucketSize = gridResolutionX * gridResolutionY * gridResolutionZ * MaxParticlesPerVoxel;
+        bucketBuffer = new ComputeBuffer(totalBucketSize, sizeof(uint));
 
         // Create particle position texture
         particlePositionTexture = CreateRenderTexture2D(particleWidth, particleHeight, RenderTextureFormat.ARGBFloat);
@@ -159,9 +157,7 @@ public class SPH : MonoBehaviour
         _particleMeshPropertiesBuffer?.Release();
         _particleArgsBuffer?.Release();
         distanceTexture.Release();
-        bucketTexture.Release();
-        depthBuffer?.Release();
-        stencilBuffer?.Release();
+        bucketBuffer?.Release();
         particlePositionTexture.Release();
     }
 
@@ -399,29 +395,25 @@ public class SPH : MonoBehaviour
 
     private void UpdateBucketTexture()
     {
-        ClearTexture(bucketTexture);
+        // Clear bucket buffer with particle count as empty marker
+        int totalBucketSize = gridResolutionX * gridResolutionY * gridResolutionZ * MaxParticlesPerVoxel;
+        uint[] clearData = new uint[totalBucketSize];
+        for (int i = 0; i < totalBucketSize; i++)
+            clearData[i] = (uint)(particleWidth * particleHeight);
+        bucketBuffer.SetData(clearData);
 
-        // Set common parameters
-        bucketShader.SetVector(ShaderIDs.SimOrigin, transform.position - transform.localScale / 2);
-        bucketShader.SetVector(ShaderIDs.ParticleResolution, new Vector2(particleWidth, particleHeight));
-        bucketShader.SetVector(ShaderIDs.GridResolution, new Vector3(gridResolutionX, gridResolutionY, gridResolutionZ));
-        bucketShader.SetFloat(ShaderIDs.CellSize, cellSize);
-
-        // Set textures and buffers
-        bucketShader.SetTexture(0, "_Bucket", bucketTexture);
+        // Set shader parameters
+        bucketShader.SetBuffer(0, "_Bucket", bucketBuffer);
         bucketShader.SetTexture(0, "_ParticlePosition", particlePositionTexture);
-        bucketShader.SetBuffer(0, "_DepthBuffer", depthBuffer);
-        bucketShader.SetBuffer(0, "_StencilBuffer", stencilBuffer);
+        bucketShader.SetVector("_ParticleResolution", new Vector2(particleWidth, particleHeight));
+        bucketShader.SetVector("_BucketResolution", new(gridResolutionX, gridResolutionY, gridResolutionZ));
+        bucketShader.SetVector("_SimOrigin", transform.position - transform.localScale / 2);
+        bucketShader.SetVector("_SimScale", transform.localScale);
 
-        int threadGroupsX = Mathf.CeilToInt((float)particleWidth / NumThreads);
-        int threadGroupsY = Mathf.CeilToInt((float)particleHeight / NumThreads);
-
-        // Execute 4 passes for RGBA channels
-        for (int pass = 0; pass < 4; pass++)
-        {
-            bucketShader.SetInt("_Pass", pass);
-            bucketShader.Dispatch(0, threadGroupsX, threadGroupsY, 1);
-        }
+        // Calculate dispatch size for 2D thread groups
+        int threadGroupsX = Mathf.CeilToInt((float)particleWidth / 32);
+        int threadGroupsY = Mathf.CeilToInt((float)particleHeight / 32);
+        bucketShader.Dispatch(0, threadGroupsX, threadGroupsY, 1);
     }
 
     #endregion
