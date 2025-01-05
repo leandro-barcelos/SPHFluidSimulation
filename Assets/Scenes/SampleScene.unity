@@ -362,6 +362,7 @@ MonoBehaviour:
   timeStep: 0.016666668
   desiredParticleCount: 1000
   spawnAreaFillRate: 0.4
+  wallWeightNumSamples: 100
   occlusionRange: 150
   particleMaterial: {fileID: 2100000, guid: 97497a52ca4d2df07af9a295da53bcf0, type: 2}
   renderParticles: 1
