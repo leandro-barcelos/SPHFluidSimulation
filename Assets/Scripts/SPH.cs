@@ -464,11 +464,21 @@ public class SPH : MonoBehaviour
 
     private void ClearTexture(RenderTexture texture)
     {
-        clearShader.SetTexture(0, ShaderIDs.Texture, texture);
+        if (texture.dimension == TextureDimension.Tex2D)
+        {
+            clearShader.SetTexture(0, ShaderIDs.Texture2D, texture);
+            int threadGroupsX = Mathf.CeilToInt((float)texture.width / NumThreads);
+            int threadGroupsY = Mathf.CeilToInt((float)texture.height / NumThreads);
+            clearShader.Dispatch(0, threadGroupsX, threadGroupsY, 1);
+        }
+        else if (texture.dimension == TextureDimension.Tex3D)
+        {
+            clearShader.SetTexture(1, ShaderIDs.Texture3D, texture);
         int threadGroupsX = Mathf.CeilToInt((float)texture.width / NumThreads);
         int threadGroupsY = Mathf.CeilToInt((float)texture.height / NumThreads);
         int threadGroupsZ = Mathf.CeilToInt((float)texture.volumeDepth / NumThreads);
-        clearShader.Dispatch(0, threadGroupsX, threadGroupsY, threadGroupsZ);
+            clearShader.Dispatch(1, threadGroupsX, threadGroupsY, threadGroupsZ);
+        }
     }
 
     #endregion

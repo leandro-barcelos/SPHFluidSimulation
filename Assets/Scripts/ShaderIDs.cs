@@ -2,7 +2,8 @@ using UnityEngine;
 
 public class ShaderIDs
 {
-    public static readonly int Texture = Shader.PropertyToID("_Texture");
+    public static readonly int Texture2D = Shader.PropertyToID("_Texture2D");
+    public static readonly int Texture3D = Shader.PropertyToID("_Texture3D");
     public static readonly int Properties = Shader.PropertyToID("_Properties");
     public static readonly int GridResolution = Shader.PropertyToID("_GridResolution");
     public static readonly int GridSize = Shader.PropertyToID("_GridSize");
