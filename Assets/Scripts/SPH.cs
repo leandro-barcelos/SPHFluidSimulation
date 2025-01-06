@@ -48,6 +48,7 @@ public class SPH : MonoBehaviour
     private float particleRadius;
     private float effectiveRadius;
     private RenderTexture particlePositionTexture;
+    private RenderTexture particleDensityTexture;
     private int particleWidth;
     private int particleHeight;
     private float particleMass = 1.0f;  // Default to 1.0
@@ -81,7 +82,7 @@ public class SPH : MonoBehaviour
     private Bounds _bounds;
 
     // Shaders
-    private ComputeShader distanceShader, clearShader;
+    private ComputeShader distanceShader, clearShader, densityShader;
 
     #endregion
 
@@ -97,6 +98,7 @@ public class SPH : MonoBehaviour
 
         camera = Camera.main;
         cameraOrbit = camera.GetComponent<CameraOrbit>();
+
         InitializeBoxes();
 
         // Adjust particle resolution for better distribution
@@ -122,13 +124,17 @@ public class SPH : MonoBehaviour
         bucketBuffer = new ComputeBuffer(totalBucketSize, sizeof(uint));
 
         UpdateDistanceTexture(meshFilter);
+
         InitializeWallWeights();
+
+
     }
 
     private void Update()
     {
         UpdateMouse(out Vector3 worldSpaceMouseRay, out Vector3 worldMouseVelocity);
         BucketGeneration();
+        DensityCalculation();
 
         if (renderParticles)
             Graphics.DrawMeshInstancedIndirect(_particleMesh, 0, particleMaterial, _bounds, _particleArgsBuffer);
@@ -141,6 +147,7 @@ public class SPH : MonoBehaviour
         distanceTexture.Release();
         bucketBuffer?.Release();
         particlePositionTexture.Release();
+        particleDensityTexture?.Release();
     }
 
     #endregion
@@ -152,6 +159,9 @@ public class SPH : MonoBehaviour
         distanceShader = Resources.Load<ComputeShader>("Distance");
         clearShader = Resources.Load<ComputeShader>("Clear");
         bucketShader = Resources.Load<ComputeShader>("Bucket");
+        densityShader = Resources.Load<ComputeShader>("Density");
+    }
+
     private void InitializeParticleTextures(int particleCount)
     {
         // Create particle position texture
@@ -421,6 +431,32 @@ public class SPH : MonoBehaviour
         bucketShader.Dispatch(0, threadGroupsX, threadGroupsY, 1);
     }
 
+    private void DensityCalculation()
+    {
+        // Clear density texture
+        ClearTexture(particleDensityTexture);
+
+        // Set shader parameters
+        densityShader.SetTexture(0, ShaderIDs.ParticleDensityTexture, particleDensityTexture);
+        densityShader.SetTexture(0, ShaderIDs.DistanceTexture, distanceTexture);
+        densityShader.SetTexture(0, ShaderIDs.ParticlePositionTexture, particlePositionTexture);
+        densityShader.SetTexture(0, ShaderIDs.WallWeightTexture, wallWeightTexture);
+        densityShader.SetBuffer(0, ShaderIDs.Bucket, bucketBuffer);
+
+        densityShader.SetFloat(ShaderIDs.ParticleMass, particleMass);
+        densityShader.SetFloat(ShaderIDs.EffectiveRadius, effectiveRadius);
+        densityShader.SetFloat(ShaderIDs.CellSize, cellSize);
+        densityShader.SetVector(ShaderIDs.SimOrigin, transform.position - transform.localScale / 2);
+        densityShader.SetVector(ShaderIDs.SimScale, transform.localScale);
+        densityShader.SetVector(ShaderIDs.BucketResolution, new Vector3(gridResolutionX, gridResolutionY, gridResolutionZ));
+        densityShader.SetVector(ShaderIDs.ParticleResolution, new Vector2(particleWidth, particleHeight));
+
+        // Calculate dispatch size for 2D thread groups
+        int threadGroupsX = Mathf.CeilToInt((float)particleWidth / NumThreads);
+        int threadGroupsY = Mathf.CeilToInt((float)particleHeight / NumThreads);
+        densityShader.Dispatch(0, threadGroupsX, threadGroupsY, 1);
+    }
+
     #endregion
 
     #region Texture Helpers
@@ -476,9 +512,9 @@ public class SPH : MonoBehaviour
         else if (texture.dimension == TextureDimension.Tex3D)
         {
             clearShader.SetTexture(1, ShaderIDs.Texture3D, texture);
-        int threadGroupsX = Mathf.CeilToInt((float)texture.width / NumThreads);
-        int threadGroupsY = Mathf.CeilToInt((float)texture.height / NumThreads);
-        int threadGroupsZ = Mathf.CeilToInt((float)texture.volumeDepth / NumThreads);
+            int threadGroupsX = Mathf.CeilToInt((float)texture.width / NumThreads);
+            int threadGroupsY = Mathf.CeilToInt((float)texture.height / NumThreads);
+            int threadGroupsZ = Mathf.CeilToInt((float)texture.volumeDepth / NumThreads);
             clearShader.Dispatch(1, threadGroupsX, threadGroupsY, threadGroupsZ);
         }
     }

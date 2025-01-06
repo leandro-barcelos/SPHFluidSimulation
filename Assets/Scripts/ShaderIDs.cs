@@ -50,4 +50,8 @@ public class ShaderIDs
     public static readonly int Bucket = Shader.PropertyToID("_Bucket");
     public static readonly int BucketResolution = Shader.PropertyToID("_BucketResolution");
     public static readonly int SimScale = Shader.PropertyToID("_SimScale");
+    public static readonly int ParticleDensityTexture = Shader.PropertyToID("_ParticleDensityTexture");
+    public static readonly int WallWeightTexture = Shader.PropertyToID("_WallWeightTexture");
+    public static readonly int ParticleMass = Shader.PropertyToID("_ParticleMass");
+    public static readonly int EffectiveRadius = Shader.PropertyToID("_EffectiveRadius");
 }
