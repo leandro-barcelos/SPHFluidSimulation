@@ -107,7 +107,7 @@ public class SPH : MonoBehaviour
 
         InitializeParticleTextures(particleCount);
 
-        cellSize = 8 * particleRadius;
+        cellSize = 2 * effectiveRadius;
 
         gridResolutionX = Mathf.CeilToInt(scale.x / cellSize);
         gridResolutionY = Mathf.CeilToInt(scale.y / cellSize);
