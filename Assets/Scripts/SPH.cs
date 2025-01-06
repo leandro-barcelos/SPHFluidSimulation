@@ -114,7 +114,7 @@ public class SPH : MonoBehaviour
 
         transform.localScale = new(gridResolutionX * cellSize, scale.y, gridResolutionZ * cellSize);
 
-        distanceTexture = CreateRenderTexture3D(gridResolutionX, gridResolutionY, gridResolutionZ, RenderTextureFormat.RFloat);
+        distanceTexture = CreateRenderTexture3D(gridResolutionX, gridResolutionY, gridResolutionZ, RenderTextureFormat.RFloat, FilterMode.Bilinear);
 
         // Initialize bucket buffer
         int totalBucketSize = gridResolutionX * gridResolutionY * gridResolutionZ * MaxParticlesPerVoxel;
@@ -428,31 +428,32 @@ public class SPH : MonoBehaviour
         (b, a) = (a, b);
     }
 
-    private static RenderTexture CreateRenderTexture2D(int width, int height, RenderTextureFormat format)
+    private static RenderTexture CreateRenderTexture2D(int width, int height, RenderTextureFormat format, FilterMode filterMode = FilterMode.Point, TextureWrapMode wrapMode = TextureWrapMode.Clamp)
     {
         var rt = new RenderTexture(width, height, 0, format)
         {
             enableRandomWrite = true,
-            filterMode = FilterMode.Bilinear,
-            wrapMode = TextureWrapMode.Clamp
+            filterMode = filterMode,
+            wrapMode = wrapMode
         };
         rt.Create();
         return rt;
     }
 
-    private static RenderTexture CreateRenderTexture3D(int width, int height, int depth, RenderTextureFormat format)
+    private static RenderTexture CreateRenderTexture3D(int width, int height, int depth, RenderTextureFormat format, FilterMode filterMode = FilterMode.Point, TextureWrapMode wrapMode = TextureWrapMode.Clamp)
     {
         var rt = new RenderTexture(width, height, 0, format)
         {
             dimension = TextureDimension.Tex3D,
             volumeDepth = depth,
             enableRandomWrite = true,
-            filterMode = FilterMode.Bilinear,
-            wrapMode = TextureWrapMode.Clamp
+            filterMode = filterMode,
+            wrapMode = wrapMode
         };
         rt.Create();
         return rt;
     }
+
     private static Texture2D CreateTexture2D(int width, int height, Color[] colors, TextureFormat format)
     {
         var texture = new Texture2D(width, height, format, false);
