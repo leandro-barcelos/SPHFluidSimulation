@@ -50,6 +50,7 @@ public class SPH : MonoBehaviour
     private RenderTexture particlePositionTexture;
     private int particleWidth;
     private int particleHeight;
+    private float particleMass = 1.0f;  // Default to 1.0
 
     // Wall Weight
     private RenderTexture wallWeightTexture;
@@ -210,6 +211,7 @@ public class SPH : MonoBehaviour
         var particleVol = totalVolume / desiredParticleCount;
         particleRadius = Mathf.Pow(3 * particleVol / (4 * Mathf.PI), 1f / 3f) * spawnAreaFillRate;
         effectiveRadius = 4 * particleRadius;
+        particleMass = 1000f * particleVol; // Assuming water density of 1000 kg/m³
 
         Vector3 particleScale = new(particleRadius * 2, particleRadius * 2, particleRadius * 2);
 
