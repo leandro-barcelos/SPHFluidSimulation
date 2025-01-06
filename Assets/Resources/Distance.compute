@@ -6,7 +6,7 @@ static const float infinity = 1e6;
 #pragma enable_d3d11_debug_symbols
 
 // Buffers
-RWTexture3D<float> _Distance;
+RWTexture3D<float> _DistanceTexture;
 StructuredBuffer<float3> _Vertices;
 StructuredBuffer<int> _Triangles;
 
@@ -95,5 +95,5 @@ void CSMain(uint3 id : SV_DispatchThreadID)
     }
 
     // Write the minimum distance to the texture
-    _Distance[id] = minDistance;
+    _DistanceTexture[id] = minDistance;
 }

@@ -41,7 +41,7 @@ public class ShaderIDs
     public static readonly int SimOrigin = Shader.PropertyToID("_SimOrigin");
     public static readonly int CellSize = Shader.PropertyToID("_CellSize");
     public static readonly int TriangleCount = Shader.PropertyToID("_TriangleCount");
-    public static readonly int Distance = Shader.PropertyToID("_Distance");
+    public static readonly int DistanceTexture = Shader.PropertyToID("_DistanceTexture");
     public static readonly int ClosestTriangles = Shader.PropertyToID("_ClosestTriangles");
     public static readonly int Vertices = Shader.PropertyToID("_Vertices");
     public static readonly int Triangles = Shader.PropertyToID("_Triangles");

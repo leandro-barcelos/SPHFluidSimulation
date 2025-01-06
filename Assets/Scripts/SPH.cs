@@ -379,7 +379,7 @@ public class SPH : MonoBehaviour
         distanceShader.SetFloat(ShaderIDs.CellSize, cellSize);
         distanceShader.SetInt(ShaderIDs.TriangleCount, triangleCount);
 
-        distanceShader.SetTexture(0, ShaderIDs.Distance, distanceTexture);
+        distanceShader.SetTexture(0, ShaderIDs.DistanceTexture, distanceTexture);
         distanceShader.SetBuffer(0, ShaderIDs.Vertices, vertices);
         distanceShader.SetBuffer(0, ShaderIDs.Triangles, triangles);
 
