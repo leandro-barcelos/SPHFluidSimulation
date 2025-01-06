@@ -39,7 +39,6 @@ public class SPH : MonoBehaviour
 
     [Header("Distance")]
     public int fastSweepingPasses = 3;
-    public int gridResolution = 64;
 
     #endregion
 
@@ -95,16 +94,6 @@ public class SPH : MonoBehaviour
 
         var scale = transform.localScale;
 
-        cellSize = scale.y / gridResolution;
-
-        gridResolutionY = gridResolution;
-        gridResolutionX = Mathf.CeilToInt(scale.x / cellSize);
-        gridResolutionZ = Mathf.CeilToInt(scale.z / cellSize);
-
-        transform.localScale = new(gridResolutionX * cellSize, scale.y, gridResolutionZ * cellSize);
-
-        distanceTexture = CreateRenderTexture3D(gridResolutionX, gridResolutionY, gridResolutionZ, RenderTextureFormat.RFloat);
-
         camera = Camera.main;
         cameraOrbit = camera.GetComponent<CameraOrbit>();
         InitializeBoxes();
@@ -115,29 +104,21 @@ public class SPH : MonoBehaviour
 
         var particleCount = particleWidth * particleHeight;
 
+        InitializeParticleTextures(particleCount);
+
+        cellSize = 8 * particleRadius;
+
+        gridResolutionX = Mathf.CeilToInt(scale.x / cellSize);
+        gridResolutionY = Mathf.CeilToInt(scale.y / cellSize);
+        gridResolutionZ = Mathf.CeilToInt(scale.z / cellSize);
+
+        transform.localScale = new(gridResolutionX * cellSize, scale.y, gridResolutionZ * cellSize);
+
+        distanceTexture = CreateRenderTexture3D(gridResolutionX, gridResolutionY, gridResolutionZ, RenderTextureFormat.RFloat);
+
         // Initialize bucket buffer
         int totalBucketSize = gridResolutionX * gridResolutionY * gridResolutionZ * MaxParticlesPerVoxel;
         bucketBuffer = new ComputeBuffer(totalBucketSize, sizeof(uint));
-
-        // Create particle position texture
-        particlePositionTexture = CreateRenderTexture2D(particleWidth, particleHeight, RenderTextureFormat.ARGBFloat);
-
-        // Adjust particle radius based on grid resolution
-        Vector3[] particlesPositions = CreateParticlePositions(particleCount);
-        Texture2D particlePositionTexture2D = new(particleWidth, particleHeight, TextureFormat.RGBAFloat, false);
-        Color[] particleColors = new Color[particleCount];
-
-        for (int i = 0; i < particleCount; i++)
-        {
-            Vector3 pos = particlesPositions[i];
-            particleColors[i] = new Color(pos.x, pos.y, pos.z, 1.0f);
-        }
-
-        particlePositionTexture2D.SetPixels(particleColors);
-        particlePositionTexture2D.Apply();
-
-        Graphics.Blit(particlePositionTexture2D, particlePositionTexture);
-        Destroy(particlePositionTexture2D);
 
         UpdateDistanceTexture(meshFilter);
         InitializeWallWeights();
@@ -170,6 +151,28 @@ public class SPH : MonoBehaviour
         distanceShader = Resources.Load<ComputeShader>("Distance");
         clearShader = Resources.Load<ComputeShader>("Clear");
         bucketShader = Resources.Load<ComputeShader>("Bucket");
+    private void InitializeParticleTextures(int particleCount)
+    {
+        // Create particle position texture
+        particlePositionTexture = CreateRenderTexture2D(particleWidth, particleHeight, RenderTextureFormat.ARGBFloat);
+        particleDensityTexture = CreateRenderTexture2D(particleWidth, particleHeight, RenderTextureFormat.RFloat);
+
+        // Adjust particle radius based on grid resolution
+        Vector3[] particlesPositions = CreateParticlePositions(particleCount);
+        Texture2D particlePositionTexture2D = new(particleWidth, particleHeight, TextureFormat.RGBAFloat, false);
+        Color[] particleColors = new Color[particleCount];
+
+        for (int i = 0; i < particleCount; i++)
+        {
+            Vector3 pos = particlesPositions[i];
+            particleColors[i] = new Color(pos.x, pos.y, pos.z, 1.0f);
+        }
+
+        particlePositionTexture2D.SetPixels(particleColors);
+        particlePositionTexture2D.Apply();
+
+        Graphics.Blit(particlePositionTexture2D, particlePositionTexture);
+        Destroy(particlePositionTexture2D);
     }
 
     private Vector3[] CreateParticlePositions(int particleCount)
