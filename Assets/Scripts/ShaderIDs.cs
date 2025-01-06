@@ -54,4 +54,5 @@ public class ShaderIDs
     public static readonly int WallWeightTexture = Shader.PropertyToID("_WallWeightTexture");
     public static readonly int ParticleMass = Shader.PropertyToID("_ParticleMass");
     public static readonly int EffectiveRadius = Shader.PropertyToID("_EffectiveRadius");
+    public static readonly int NumParticles = Shader.PropertyToID("_NumParticles");
 }

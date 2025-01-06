@@ -12,6 +12,7 @@ float2 _ParticleResolution;
 uint3 _BucketResolution;
 float3 _SimOrigin;
 float3 _SimScale;
+uint _NumParticles;
 
 #pragma kernel CSMain
 
@@ -22,30 +23,17 @@ void CSMain(uint3 id : SV_DispatchThreadID)
     if (any(id.xy >= uint2(_ParticleResolution)))
         return;
 
-    // Read particle position from texture
+    uint id_1d = id.y * uint(_ParticleResolution.x) + id.x;
+
     float3 pos = _ParticlePositionTexture[id.xy].xyz;
-    float3 normalizedPos = (pos - _SimOrigin) / _SimScale;
-    
-    // Validate normalized position is within [0,1]
-    if (any(normalizedPos < 0.0) || any(normalizedPos > 1.0))
-        return;
-        
-    uint3 index_3d = uint3(normalizedPos * _BucketResolution);
-    
-    // Validate bucket indices
-    if (any(index_3d >= _BucketResolution))
-        return;
-        
-    uint index = index_3d.x + index_3d.y * _BucketResolution.x + index_3d.z * _BucketResolution.x * _BucketResolution.y;
-        
-    // Try to find an empty slot in the bucket
+    float3 n_pos = (pos - _SimOrigin) / _SimScale;
+    float3 idx_3d = int3(n_pos*float3(_BucketResolution-1));
+    uint index = idx_3d.x + idx_3d.y * _BucketResolution.x + idx_3d.z * _BucketResolution.x * _BucketResolution.y;
+    index *= MAX_PARTICLES_PER_VOXEL;
     for (uint j = 0; j < MAX_PARTICLES_PER_VOXEL; j++)
     {
-        uint bucketIndex = index * MAX_PARTICLES_PER_VOXEL + j;
-        uint particleIndex = id.y * uint(_ParticleResolution.x) + id.x;
         uint original;
-        InterlockedCompareExchange(_Bucket[bucketIndex], uint(_ParticleResolution.x * _ParticleResolution.y), particleIndex, original);
-        if (original == uint(_ParticleResolution.x * _ParticleResolution.y)) 
-            break;
+        InterlockedCompareExchange(_Bucket[index + j], _NumParticles, id_1d, original);
+        if(original==_NumParticles) break;
     }
 }

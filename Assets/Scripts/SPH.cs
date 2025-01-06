@@ -420,6 +420,7 @@ public class SPH : MonoBehaviour
         // Set shader parameters
         bucketShader.SetBuffer(0, ShaderIDs.Bucket, bucketBuffer);
         bucketShader.SetTexture(0, ShaderIDs.ParticlePositionTexture, particlePositionTexture);
+        bucketShader.SetInt(ShaderIDs.NumParticles, particleWidth * particleHeight);
         bucketShader.SetVector(ShaderIDs.ParticleResolution, new Vector2(particleWidth, particleHeight));
         bucketShader.SetVector(ShaderIDs.BucketResolution, new(gridResolutionX, gridResolutionY, gridResolutionZ));
         bucketShader.SetVector(ShaderIDs.SimOrigin, transform.position - transform.localScale / 2);
