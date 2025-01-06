@@ -1,27 +1,32 @@
 #define NUM_THREADS 8
 #define MAX_PARTICLES_PER_VOXEL 32
+#define POW3(x) ((x)*(x)*(x))
 
-static const float pi = 3.14159;
+static const float PI = 3.14159265358979323846264338327950288;
 
 #pragma enable_d3d11_debug_symbols
 
 // Buffers
 RWTexture2D<float> _ParticleDensityTexture;
-Texture3D<float> _DistanceTexture;
-SamplerState sampler_DistanceTexture;
 Texture2D<float4> _ParticlePositionTexture;
-Texture1D<float> _WallWeightTexture;
-SamplerState sampler_WallWeightTexture;
 StructuredBuffer<uint> _Bucket;
 
 // Parameters
+uint _NumParticles;
 float _ParticleMass;
-float _EffectiveRadius;
-float _CellSize;
+float _EffectiveRadius2;
+float _EffectiveRadius9;
 float3 _SimOrigin;
 float3 _SimScale;
 uint3 _BucketResolution;
 float2 _ParticleResolution;
+
+float W(float3 r){
+    const float c = 315.0/(64.0*PI);
+    float abs_r2 = dot(r,r);
+    float diff_r2 = _EffectiveRadius2-abs_r2;
+    return 0<diff_r2?c*POW3(diff_r2)/_EffectiveRadius9:0.0;
+}
 
 #pragma kernel CSMain
 
@@ -32,80 +37,27 @@ void CSMain(uint3 id : SV_DispatchThreadID)
     if (any(id.xy >= uint2(_ParticleResolution)))
         return;
 
-    // Get cell index from particle position
-    float3 pos = _ParticlePositionTexture[id.xy].xyz;
+    float3 pos_i = _ParticlePositionTexture[id.xy].xyz;
+    float3 n_pos_i = (pos_i - _SimOrigin) / _SimScale;
+    float3 idx_3d = int3(n_pos_i*float3(_BucketResolution-1));
 
-    float3 normalizedPos = (pos - _SimOrigin) / _SimScale;
-    
-    // Check if normalized position is within [0,1]
-    if (any(normalizedPos < 0.0) || any(normalizedPos > 1.0))
-        return;
-    
-    uint3 index_3d = uint3(normalizedPos * _BucketResolution);
-    
-    // Validate bucket indices
-    if (any(index_3d >= _BucketResolution))
-        return;
-    
-    uint curParticleIndex = id.y * uint(_ParticleResolution.x) + id.x;
-    uint numParticles = uint(_ParticleResolution.x * _ParticleResolution.y);
-
-    float weightConstant = 315.0 / (64.0 * pi * pow(_EffectiveRadius, 9)); 
-    bool foundNeighbor = false;
-
-    float density = 0.0f;
-
-    // Since cellSize = 2 * effectiveRadius, checking immediate neighbors (-1 to 1) is sufficient
-    for (int i = -1; i <= 1; i++)
-    {
-        for (int j = -1; j <= 1; j++)
+    float rho = 0.0;
+    for (int x_offset=-1; x_offset<=1; x_offset++)
+    for (int y_offset=-1; y_offset<=1; y_offset++)
+    for (int z_offset=-1; z_offset<=1; z_offset++){
+        int3 idx_3d_j = idx_3d + int3(x_offset, y_offset, z_offset);
+        if(all(idx_3d_j >= 0) && all((uint3)idx_3d_j < _BucketResolution))
         {
-            for (int k = -1; k <= 1; k++)
-            {
-                int3 neighborIndex3D = int3(index_3d) + int3(i, j, k);
-                
-                // Skip if neighbor is out of bounds
-                if (any(neighborIndex3D < 0) || any(neighborIndex3D >= _BucketResolution))
-                    continue;
-
-                uint index = neighborIndex3D.x + neighborIndex3D.y * _BucketResolution.x + neighborIndex3D.z * _BucketResolution.x * _BucketResolution.y;
-
-                for (int l = 0; l < MAX_PARTICLES_PER_VOXEL; l++)
-                {
-                    uint bucketIndex = index * MAX_PARTICLES_PER_VOXEL + l;
-                    uint neighborIdx = _Bucket[bucketIndex];
-
-                    if (neighborIdx == numParticles)
-                        break;
-
-                    uint2 neighborIdx2D = uint2(neighborIdx % uint(_ParticleResolution.x), neighborIdx / uint(_ParticleResolution.x));
-                    float3 neighborPos = _ParticlePositionTexture[neighborIdx2D].xyz;
-                        
-                    float distance = length(pos - neighborPos);
-
-                    if (distance > _EffectiveRadius)
-                        continue;
-
-                    foundNeighbor = true;
-                    density += weightConstant * 
-                        pow(_EffectiveRadius * _EffectiveRadius - distance * distance, 3);
-                }
+            uint bkt_j = idx_3d_j.x + idx_3d_j.y * _BucketResolution.x + idx_3d_j.z * _BucketResolution.x * _BucketResolution.y;
+            bkt_j *= MAX_PARTICLES_PER_VOXEL;
+            for (uint j2 = 0; j2<MAX_PARTICLES_PER_VOXEL; j2++){
+                uint j = _Bucket[bkt_j + j2];
+                if (j == _NumParticles) break;
+                uint2 j_2D = uint2(j % uint(_ParticleResolution.x), j / uint(_ParticleResolution.x));
+                rho += _ParticleMass* W(pos_i - _ParticlePositionTexture[j_2D].xyz);
             }
         }
     }
 
-    density *= _ParticleMass;
-
-    // Check for wall contribution
-    float3 normalizedIdx = float3(index_3d) / float3(_BucketResolution);
-    float distanceToWall = _DistanceTexture.SampleLevel(sampler_DistanceTexture, normalizedIdx, 0);
-
-    if (distanceToWall <= _EffectiveRadius)
-    {
-        float normalizedDistance = saturate(distanceToWall / _EffectiveRadius);
-        float wallWeight = _WallWeightTexture.SampleLevel(sampler_WallWeightTexture, normalizedDistance, 0);
-        density += wallWeight;
-    }
-    
-    _ParticleDensityTexture[id.xy] = density;
+    _ParticleDensityTexture[id.xy] = rho;
 }

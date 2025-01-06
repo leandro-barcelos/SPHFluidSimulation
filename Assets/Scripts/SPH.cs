@@ -439,14 +439,13 @@ public class SPH : MonoBehaviour
 
         // Set shader parameters
         densityShader.SetTexture(0, ShaderIDs.ParticleDensityTexture, particleDensityTexture);
-        densityShader.SetTexture(0, ShaderIDs.DistanceTexture, distanceTexture);
         densityShader.SetTexture(0, ShaderIDs.ParticlePositionTexture, particlePositionTexture);
-        densityShader.SetTexture(0, ShaderIDs.WallWeightTexture, wallWeightTexture);
         densityShader.SetBuffer(0, ShaderIDs.Bucket, bucketBuffer);
 
+        densityShader.SetInt(ShaderIDs.NumParticles, particleWidth * particleHeight);
         densityShader.SetFloat(ShaderIDs.ParticleMass, particleMass);
-        densityShader.SetFloat(ShaderIDs.EffectiveRadius, effectiveRadius);
-        densityShader.SetFloat(ShaderIDs.CellSize, cellSize);
+        densityShader.SetFloat(ShaderIDs.EffectiveRadius2, effectiveRadius * effectiveRadius);
+        densityShader.SetFloat(ShaderIDs.EffectiveRadius9, Mathf.Pow(effectiveRadius, 9));
         densityShader.SetVector(ShaderIDs.SimOrigin, transform.position - transform.localScale / 2);
         densityShader.SetVector(ShaderIDs.SimScale, transform.localScale);
         densityShader.SetVector(ShaderIDs.BucketResolution, new Vector3(gridResolutionX, gridResolutionY, gridResolutionZ));
