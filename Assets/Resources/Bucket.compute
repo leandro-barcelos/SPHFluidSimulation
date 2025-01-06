@@ -1,4 +1,4 @@
-#define NUM_THREADS 32
+#define NUM_THREADS 8
 #define MAX_PARTICLES_PER_VOXEL 32
 
 #pragma enable_d3d11_debug_symbols
@@ -25,7 +25,17 @@ void CSMain(uint3 id : SV_DispatchThreadID)
     // Read particle position from texture
     float3 pos = _ParticlePositionTexture[id.xy].xyz;
     float3 normalizedPos = (pos - _SimOrigin) / _SimScale;
+    
+    // Validate normalized position is within [0,1]
+    if (any(normalizedPos < 0.0) || any(normalizedPos > 1.0))
+        return;
+        
     uint3 index_3d = uint3(normalizedPos * _BucketResolution);
+    
+    // Validate bucket indices
+    if (any(index_3d >= _BucketResolution))
+        return;
+        
     uint index = index_3d.x + index_3d.y * _BucketResolution.x + index_3d.z * _BucketResolution.x * _BucketResolution.y;
         
     // Try to find an empty slot in the bucket
@@ -35,6 +45,7 @@ void CSMain(uint3 id : SV_DispatchThreadID)
         uint particleIndex = id.y * uint(_ParticleResolution.x) + id.x;
         uint original;
         InterlockedCompareExchange(_Bucket[bucketIndex], uint(_ParticleResolution.x * _ParticleResolution.y), particleIndex, original);
-        if (original == uint(_ParticleResolution.x * _ParticleResolution.y)) break;
+        if (original == uint(_ParticleResolution.x * _ParticleResolution.y)) 
+            break;
     }
 }

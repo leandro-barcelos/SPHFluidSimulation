@@ -414,8 +414,8 @@ public class SPH : MonoBehaviour
         bucketShader.SetVector(ShaderIDs.SimScale, transform.localScale);
 
         // Calculate dispatch size for 2D thread groups
-        int threadGroupsX = Mathf.CeilToInt((float)particleWidth / 32);
-        int threadGroupsY = Mathf.CeilToInt((float)particleHeight / 32);
+        int threadGroupsX = Mathf.CeilToInt((float)particleWidth / NumThreads);
+        int threadGroupsY = Mathf.CeilToInt((float)particleHeight / NumThreads);
         bucketShader.Dispatch(0, threadGroupsX, threadGroupsY, 1);
     }
 
