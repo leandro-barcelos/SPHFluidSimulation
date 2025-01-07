@@ -8,6 +8,8 @@ public class SPH : MonoBehaviour
 {
     const int NumThreads = 8;
     const int MaxParticlesPerVoxel = 32;
+    const int Read = 0;
+    const int Write = 1;
 
     #region Auxiliary Structures
     private struct MeshProperties
@@ -47,7 +49,8 @@ public class SPH : MonoBehaviour
     // Particle
     private float particleRadius;
     private float effectiveRadius;
-    private RenderTexture particlePositionTexture;
+    private RenderTexture[] particlePositionTextures;
+    private RenderTexture[] particleVelocityTextures;
     private RenderTexture particleDensityTexture;
     private int particleWidth;
     private int particleHeight;
@@ -146,7 +149,10 @@ public class SPH : MonoBehaviour
         _particleArgsBuffer?.Release();
         distanceTexture.Release();
         bucketBuffer?.Release();
-        particlePositionTexture.Release();
+        particlePositionTextures[Read].Release();
+        particleVelocityTextures[Read].Release();
+        particlePositionTextures[Write].Release();
+        particleVelocityTextures[Write].Release();
         particleDensityTexture?.Release();
     }
 
@@ -164,11 +170,22 @@ public class SPH : MonoBehaviour
 
     private void InitializeParticleTextures(int particleCount)
     {
-        // Create particle position texture
-        particlePositionTexture = CreateRenderTexture2D(particleWidth, particleHeight, RenderTextureFormat.ARGBFloat);
+        // Create particle position textures
+        particlePositionTextures = new RenderTexture[2];
+
+        particlePositionTextures[Read] = CreateRenderTexture2D(particleWidth, particleHeight, RenderTextureFormat.ARGBFloat);
+        particlePositionTextures[Write] = CreateRenderTexture2D(particleWidth, particleHeight, RenderTextureFormat.ARGBFloat);
+
+        // Create particle velocity textures
+        particleVelocityTextures = new RenderTexture[2];
+
+        particleVelocityTextures[Read] = CreateRenderTexture2D(particleWidth, particleHeight, RenderTextureFormat.ARGBFloat);
+        particleVelocityTextures[Write] = CreateRenderTexture2D(particleWidth, particleHeight, RenderTextureFormat.ARGBFloat);
+
+        // Create density texture
         particleDensityTexture = CreateRenderTexture2D(particleWidth, particleHeight, RenderTextureFormat.RFloat);
 
-        // Adjust particle radius based on grid resolution
+        // Initialize positions
         Vector3[] particlesPositions = CreateParticlePositions(particleCount);
         Texture2D particlePositionTexture2D = new(particleWidth, particleHeight, TextureFormat.RGBAFloat, false);
         Color[] particleColors = new Color[particleCount];
@@ -182,8 +199,11 @@ public class SPH : MonoBehaviour
         particlePositionTexture2D.SetPixels(particleColors);
         particlePositionTexture2D.Apply();
 
-        Graphics.Blit(particlePositionTexture2D, particlePositionTexture);
+        Graphics.Blit(particlePositionTexture2D, particlePositionTextures[Read]);
         Destroy(particlePositionTexture2D);
+
+        // Initialize velocities to zero
+        ClearTexture(particleVelocityTextures[Read]);
     }
 
     private Vector3[] CreateParticlePositions(int particleCount)
@@ -419,7 +439,7 @@ public class SPH : MonoBehaviour
 
         // Set shader parameters
         bucketShader.SetBuffer(0, ShaderIDs.Bucket, bucketBuffer);
-        bucketShader.SetTexture(0, ShaderIDs.ParticlePositionTexture, particlePositionTexture);
+        bucketShader.SetTexture(0, ShaderIDs.ParticlePositionTexture, particlePositionTextures[Read]);
         bucketShader.SetInt(ShaderIDs.NumParticles, particleWidth * particleHeight);
         bucketShader.SetVector(ShaderIDs.ParticleResolution, new Vector2(particleWidth, particleHeight));
         bucketShader.SetVector(ShaderIDs.BucketResolution, new(gridResolutionX, gridResolutionY, gridResolutionZ));
@@ -439,7 +459,7 @@ public class SPH : MonoBehaviour
 
         // Set shader parameters
         densityShader.SetTexture(0, ShaderIDs.ParticleDensityTexture, particleDensityTexture);
-        densityShader.SetTexture(0, ShaderIDs.ParticlePositionTexture, particlePositionTexture);
+        densityShader.SetTexture(0, ShaderIDs.ParticlePositionTexture, particlePositionTextures[Read]);
         densityShader.SetBuffer(0, ShaderIDs.Bucket, bucketBuffer);
 
         densityShader.SetInt(ShaderIDs.NumParticles, particleWidth * particleHeight);
@@ -461,9 +481,9 @@ public class SPH : MonoBehaviour
 
     #region Texture Helpers
 
-    private void Swap(ref RenderTexture a, ref RenderTexture b)
+    private void Swap(RenderTexture[] textures)
     {
-        (b, a) = (a, b);
+        (textures[Write], textures[Read]) = (textures[Read], textures[Write]);
     }
 
     private static RenderTexture CreateRenderTexture2D(int width, int height, RenderTextureFormat format, FilterMode filterMode = FilterMode.Point, TextureWrapMode wrapMode = TextureWrapMode.Clamp)
