@@ -34,6 +34,11 @@ public class SPH : MonoBehaviour
     [Range(0.001f, 1f)] public float particleRadius;
     [Range(0.01f, 1f)] public float spawnAreaFillRate;
     [Range(3, 1000)] public int wallWeightNumSamples = 100;
+    [Range(0.001f, 0.01f)] public float viscosity = 0.01f;
+    [Range(1f, 2f)] public float restDensity = 1.5f;
+    [Range(100f, 500f)] public float gasConstant = 150.0f;
+    [Range(1000f, 10000f)] public float stiffnessCoeff = 5000.0f;
+    [Range(1f, 50f)] public float dampingCoeff = 10.0f;
 
     [Header("Rendering")]
     public float occlusionRange;
@@ -85,7 +90,7 @@ public class SPH : MonoBehaviour
     private Bounds _bounds;
 
     // Shaders
-    private ComputeShader distanceShader, clearShader, densityShader;
+    private ComputeShader distanceShader, clearShader, densityShader, velPosShader;
 
     #endregion
 
@@ -129,14 +134,13 @@ public class SPH : MonoBehaviour
         UpdateDistanceTexture(meshFilter);
 
         InitializeWallWeights();
-
-
     }
 
     private void Update()
     {
         BucketGeneration();
         DensityCalculation();
+        UpdateVelocityAndPosition();
 
         if (renderParticles)
             Graphics.DrawMeshInstancedIndirect(_particleMesh, 0, particleMaterial, _bounds, _particleArgsBuffer);
@@ -165,6 +169,7 @@ public class SPH : MonoBehaviour
         clearShader = Resources.Load<ComputeShader>("Clear");
         bucketShader = Resources.Load<ComputeShader>("Bucket");
         densityShader = Resources.Load<ComputeShader>("Density");
+        velPosShader = Resources.Load<ComputeShader>("VelPos");
     }
 
     private void InitializeParticleTextures(int particleCount)
@@ -454,6 +459,41 @@ public class SPH : MonoBehaviour
         int threadGroupsX = Mathf.CeilToInt((float)particleWidth / NumThreads);
         int threadGroupsY = Mathf.CeilToInt((float)particleHeight / NumThreads);
         densityShader.Dispatch(0, threadGroupsX, threadGroupsY, 1);
+    }
+
+    private void UpdateVelocityAndPosition()
+    {
+        velPosShader.SetTexture(0, ShaderIDs.ParticlePositionTextureWrite, particlePositionTextures[Write]);
+        velPosShader.SetTexture(0, ShaderIDs.ParticleVelocityTextureWrite, particleVelocityTextures[Write]);
+        velPosShader.SetTexture(0, ShaderIDs.ParticlePositionTexture, particlePositionTextures[Read]);
+        velPosShader.SetTexture(0, ShaderIDs.ParticleVelocityTexture, particleVelocityTextures[Read]);
+        velPosShader.SetTexture(0, ShaderIDs.ParticleDensityTexture, particleDensityTexture);
+        velPosShader.SetBuffer(0, ShaderIDs.Bucket, bucketBuffer);
+        velPosShader.SetBuffer(0, ShaderIDs.Properties, _particleMeshPropertiesBuffer);
+
+        velPosShader.SetInt(ShaderIDs.NumParticles, particleWidth * particleHeight);
+        velPosShader.SetFloat(ShaderIDs.EffectiveRadius, effectiveRadius);
+        velPosShader.SetFloat(ShaderIDs.EffectiveRadius6, Mathf.Pow(effectiveRadius, 6));
+        velPosShader.SetFloat(ShaderIDs.ParticleMass, particleMass);
+        velPosShader.SetFloat(ShaderIDs.TimeStep, timeStep);
+        velPosShader.SetFloat(ShaderIDs.Viscosity, viscosity);
+        velPosShader.SetFloat(ShaderIDs.GasConst, gasConstant);
+        velPosShader.SetFloat(ShaderIDs.RestDensity, restDensity);
+        velPosShader.SetFloat(ShaderIDs.StiffnessCoeff, stiffnessCoeff);
+        velPosShader.SetFloat(ShaderIDs.DampingCoeff, dampingCoeff);
+        velPosShader.SetVector(ShaderIDs.ParticleResolution, new Vector2(particleWidth, particleHeight));
+        velPosShader.SetVector(ShaderIDs.BucketResolution, new Vector3(gridResolutionX, gridResolutionY, gridResolutionZ));
+        velPosShader.SetVector(ShaderIDs.SimOrigin, transform.position - transform.localScale / 2);
+        velPosShader.SetVector(ShaderIDs.SimScale, transform.localScale);
+        velPosShader.SetVector(ShaderIDs.ParticleScale, new(particleRadius, particleRadius, particleRadius));
+
+        // Calculate dispatch size for 2D thread groups
+        int threadGroupsX = Mathf.CeilToInt((float)particleWidth / NumThreads);
+        int threadGroupsY = Mathf.CeilToInt((float)particleHeight / NumThreads);
+        velPosShader.Dispatch(0, threadGroupsX, threadGroupsY, 1);
+
+        Swap(particlePositionTextures);
+        Swap(particleVelocityTextures);
     }
 
     #endregion

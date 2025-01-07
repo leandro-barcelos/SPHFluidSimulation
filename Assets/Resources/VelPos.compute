@@ -1,0 +1,185 @@
+#define NUM_THREADS 8
+#define MAX_PARTICLES_PER_VOXEL 32
+#define POW3(x) ((x)*(x)*(x))
+
+struct MeshProperties {
+    float4x4 mat;
+    float4 color;
+};
+
+static const float epsilon = 1e-6;
+static const float PI = 3.14159265358979323846264338327950288;
+static const float3 a_gravity = float3(0.0, -9.8, 0.0);
+
+#pragma enable_d3d11_debug_symbols
+
+// Buffers
+RWTexture2D<float4> _ParticlePositionTextureWrite;
+RWTexture2D<float4> _ParticleVelocityTextureWrite;
+Texture2D<float4> _ParticlePositionTexture;
+Texture2D<float4> _ParticleVelocityTexture;
+Texture2D<float> _ParticleDensityTexture;
+RWStructuredBuffer<MeshProperties> _Properties;
+StructuredBuffer<uint> _Bucket;
+
+// Parameters
+uint _NumParticles;
+float _EffectiveRadius;
+float _EffectiveRadius6;
+float _ParticleMass;
+float _TimeStep;
+float _Viscosity;
+float _GasConst;
+float _RestDensity;
+float _StiffnessCoeff;
+float _DampingCoeff;
+float2 _ParticleResolution;
+uint3 _BucketResolution;
+float3 _SimOrigin;
+float3 _SimScale;
+float3 _ParticleScale;
+
+float3 grad_W_press(float3 r){
+    const float c = 45.0 / PI;
+    float abs_r = length(r);
+    float diff_r = _EffectiveRadius - abs_r;
+    return (epsilon < diff_r) && (epsilon < abs_r) ? (c / _EffectiveRadius6) * POW3(diff_r) * r / abs_r : 0.0;
+}
+
+float grad_W_vis(float3 r){
+    const float c = 45.0 / PI;
+    float abs_r = length(r);
+    return abs_r < _EffectiveRadius ? (c / _EffectiveRadius6) * (_EffectiveRadius - abs_r) : 0.0;
+}
+
+#pragma kernel CSMain
+
+[numthreads(NUM_THREADS, NUM_THREADS, 1)]
+void CSMain(uint3 id : SV_DispatchThreadID)
+{
+    // Check if we're within texture bounds
+    if (any(id.xy >= uint2(_ParticleResolution)))
+        return;
+
+    uint id_1d = id.y * uint(_ParticleResolution.x) + id.x;
+
+    float3 pos_i = _ParticlePositionTexture[id.xy].xyz;
+    // Ensure position is strictly within bounds before normalizing
+    float3 n_pos_i = (pos_i - _SimOrigin) / _SimScale;
+    float3 idx_3d = int3(n_pos_i*float3(_BucketResolution - 1));
+
+    float rho_i = _ParticleDensityTexture[id.xy];
+    float p_i = _GasConst * (rho_i - _RestDensity);
+    float4 vel_in_i = _ParticleVelocityTexture[id.xy];
+
+    float3 f_press = 0.0;
+    float3 f_vis = 0.0;
+
+    for (int x_offset = -1; x_offset <= 1; x_offset++)
+    for (int y_offset = -1; y_offset <= 1; y_offset++)
+    for (int z_offset = -1; z_offset <= 1; z_offset++)
+    {
+        int3 idx_3d_j = idx_3d + int3(x_offset, y_offset, z_offset);
+
+        if(all(idx_3d_j >= 0) && all((uint3)idx_3d_j < _BucketResolution))
+        {
+            uint bkt_j = idx_3d_j.x + idx_3d_j.y * _BucketResolution.x + idx_3d_j.z * _BucketResolution.x * _BucketResolution.y;
+            bkt_j *= MAX_PARTICLES_PER_VOXEL;
+            for (uint j2 = 0; j2 < MAX_PARTICLES_PER_VOXEL; j2++)
+            {
+                uint j = _Bucket[bkt_j + j2];
+
+                if (j == _NumParticles) break;
+                if (j == id_1d) continue;
+
+                uint2 j_2d = uint2(j % uint(_ParticleResolution.x), j / uint(_ParticleResolution.x));
+
+                float rho_j = _ParticleDensityTexture[j_2d];
+                float p_j = _GasConst * (rho_j - _RestDensity);
+                float3 pos_j = _ParticlePositionTexture[j_2d].xyz;
+                float3 pos_ij = pos_i - pos_j;
+                // Prevent division by zero in force calculations
+                if (rho_j > epsilon)
+                {
+                    f_press += ((p_i + p_j) / (2.0 * rho_j)) * grad_W_press(pos_ij);
+                    f_vis += ((_ParticleVelocityTexture[j_2d].xyz - vel_in_i.xyz) / rho_j) * grad_W_vis(pos_ij);
+                }
+            }
+        }
+    }
+
+    // Prevent division by zero in final force calculations
+    if (rho_i > epsilon)
+    {
+        f_press *= _ParticleMass * _ParticleMass / rho_i;
+        f_vis *= _Viscosity * _ParticleMass * _ParticleMass / rho_i;
+    }
+
+    float3 f_wall = 0.0;
+    float3 r = 0.0;
+
+    float3 min_pos = _SimOrigin + _EffectiveRadius;
+    float3 max_pos = (_SimOrigin + _SimScale) - _EffectiveRadius;
+
+    if(pos_i.x < min_pos.x) 
+        r.x += min_pos.x - pos_i.x;
+    else if(pos_i.x > max_pos.x) 
+        r.x += max_pos.x - pos_i.x;
+
+    if(pos_i.y < min_pos.y) 
+        r.y += min_pos.y - pos_i.y;
+    else if(pos_i.y > max_pos.y) 
+        r.y += max_pos.y - pos_i.y;
+
+    if(pos_i.z < min_pos.z) 
+        r.z += min_pos.z - pos_i.z;
+    else if(pos_i.z > max_pos.z) 
+        r.z += max_pos.z - pos_i.z;
+        
+    float3 abs_r = abs(r);
+    float max_r = max(abs_r.x, max(abs_r.y, abs_r.z));
+
+    float3 damp;
+    damp.x = (r.x != 0.0) ? _DampingCoeff : 0.0;
+    damp.y = (r.y != 0.0) ? _DampingCoeff : 0.0;
+    damp.z = (r.z != 0.0) ? _DampingCoeff : 0.0;
+
+    if(max_r > 0)
+    {
+        f_wall = r * _StiffnessCoeff - dot(damp, vel_in_i.xyz);
+        f_wall *= _ParticleMass;
+    }
+
+    float3 a_i = a_gravity + (float3(f_press + f_vis) + f_wall) / _ParticleMass;
+    float4 vel_out_i;
+    
+    // Check for NaN in acceleration
+    if (any(isnan(a_i)))
+    {
+        a_i = float3(0, 0, 0);
+        vel_out_i = float4(0, 0, 0, 0.003);  // Mark NaN acceleration with special alpha
+    }
+    else
+    {
+        vel_out_i = vel_in_i + float4(a_i * _TimeStep, 1.0);
+    }
+
+    float4 pos_out_i = float4(pos_i, 1.0);  // Default to current position
+    
+    // Only update position if velocity is valid
+    if (!any(isnan(vel_out_i.xyz)))
+    {
+        pos_out_i = float4(pos_i, 1.0) + _TimeStep * vel_out_i;
+        pos_out_i = clamp(pos_out_i, float4(_SimOrigin, 1.0), float4(_SimOrigin + _SimScale, 1.0));
+    }
+    
+    _ParticleVelocityTextureWrite[id.xy] = vel_out_i;
+    _ParticlePositionTextureWrite[id.xy] = pos_out_i;
+
+    _Properties[id_1d].mat = float4x4(
+        float4(_ParticleScale.x, 0, 0, pos_out_i.x),
+        float4(0, _ParticleScale.y, 0, pos_out_i.y),
+        float4(0, 0, _ParticleScale.z, pos_out_i.z),
+        float4(0, 0, 0, 1)
+    );
+}
