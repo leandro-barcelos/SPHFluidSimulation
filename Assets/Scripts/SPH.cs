@@ -31,6 +31,7 @@ public class SPH : MonoBehaviour
     [Header("Parameters")]
     [Range(0f, 1f / 60f)] public float timeStep = 1f / 60f;
     public int desiredParticleCount = 1000;
+    [Range(0.001f, 1f)] public float particleRadius;
     [Range(0.01f, 1f)] public float spawnAreaFillRate;
     [Range(3, 1000)] public int wallWeightNumSamples = 100;
 
@@ -47,7 +48,6 @@ public class SPH : MonoBehaviour
     #region Private
 
     // Particle
-    private float particleRadius;
     private float effectiveRadius;
     private RenderTexture[] particlePositionTextures;
     private RenderTexture[] particleVelocityTextures;
@@ -118,7 +118,7 @@ public class SPH : MonoBehaviour
         gridResolutionY = Mathf.CeilToInt(scale.y / cellSize);
         gridResolutionZ = Mathf.CeilToInt(scale.z / cellSize);
 
-        transform.localScale = new(gridResolutionX * cellSize, scale.y, gridResolutionZ * cellSize);
+        transform.localScale = new(gridResolutionX * cellSize, gridResolutionY * cellSize, gridResolutionZ * cellSize);
 
         distanceTexture = CreateRenderTexture3D(gridResolutionX, gridResolutionY, gridResolutionZ, RenderTextureFormat.RFloat, FilterMode.Bilinear);
 
@@ -237,10 +237,8 @@ public class SPH : MonoBehaviour
             totalVolume += volume;
         }
 
-        var particleVol = totalVolume / desiredParticleCount;
-        particleRadius = Mathf.Pow(3 * particleVol / (4 * Mathf.PI), 1f / 3f) * spawnAreaFillRate;
         effectiveRadius = 4 * particleRadius;
-        particleMass = 1000f * particleVol; // Assuming water density of 1000 kg/m³
+        particleMass = Mathf.Pow(4 * Mathf.Pow(particleRadius, 3) * Mathf.PI / (3 * MaxParticlesPerVoxel), 1f / 3f);
 
         Vector3 particleScale = new(particleRadius * 2, particleRadius * 2, particleRadius * 2);
 
