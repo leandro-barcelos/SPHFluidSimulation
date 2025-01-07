@@ -135,7 +135,6 @@ public class SPH : MonoBehaviour
 
     private void Update()
     {
-        UpdateMouse(out Vector3 worldSpaceMouseRay, out Vector3 worldMouseVelocity);
         BucketGeneration();
         DensityCalculation();
 
@@ -379,24 +378,6 @@ public class SPH : MonoBehaviour
     #endregion
 
     #region Update
-
-    private void UpdateMouse(out Vector3 worldSpaceMouseRay, out Vector3 worldMouseVelocity)
-    {
-        worldSpaceMouseRay = Vector3.zero;
-        worldMouseVelocity = Vector3.zero;
-
-        if (Input.GetMouseButton(2))
-        {
-            Ray ray = camera.ScreenPointToRay(Input.mousePosition);
-            if (Physics.Raycast(ray, out _))
-            {
-                Vector3 currentMousePlane = ray.GetPoint(cameraOrbit.distance);
-                worldMouseVelocity = (currentMousePlane - lastMousePlane) / Time.deltaTime * 0.6f;
-                lastMousePlane = currentMousePlane;
-                worldSpaceMouseRay = ray.direction;
-            }
-        }
-    }
 
     private void UpdateDistanceTexture(MeshFilter meshFilter)
     {
