@@ -16,8 +16,6 @@ uint _NumParticles;
 float _ParticleMass;
 float _EffectiveRadius2;
 float _EffectiveRadius9;
-float3 _SimOrigin;
-float3 _SimScale;
 uint _BucketResolution;
 float2 _ParticleResolution;
 
@@ -38,8 +36,7 @@ void CSMain(uint3 id : SV_DispatchThreadID)
         return;
 
     float3 pos_i = _ParticlePositionTexture[id.xy].xyz;
-    float3 n_pos_i = (pos_i - _SimOrigin) / _SimScale;
-    float3 idx_3d = int3(n_pos_i * (_BucketResolution - 1));
+    float3 idx_3d = int3(pos_i * (_BucketResolution - 1));
 
     float rho = 0.0;
     for (int x_offset=-1; x_offset<=1; x_offset++)

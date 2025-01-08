@@ -1,0 +1,65 @@
+#define NUM_THREADS 8
+
+struct MeshProperties {
+    float4x4 mat;
+    float4 color;
+};
+
+RWStructuredBuffer<MeshProperties> _Properties;
+Texture2D<float4> _ParticlePositionTexture;
+Texture2D<float> _ParticleDensityTexture;
+
+float _RestDensity;
+float2 _ParticleResolution;
+float3 _ParticleScale;
+float4x4 _SimTRS;
+
+#pragma kernel CSMain
+
+[numthreads(NUM_THREADS, NUM_THREADS, 1)]
+void CSMain (uint3 id : SV_DispatchThreadID)
+{
+    // Check if we're within texture bounds
+    if (any(id.xy >= uint2(_ParticleResolution)))
+        return;
+
+    uint id_1d = id.y * uint(_ParticleResolution.x) + id.x;
+
+    // Sample position and density
+    float4 position = _ParticlePositionTexture[id.xy];
+    float density = _ParticleDensityTexture[id.xy];
+
+    // Extract simulation area scale (diagonal elements of _SimTRS)
+    float3 simScale = float3(_SimTRS._m00, _SimTRS._m11, _SimTRS._m22);
+    
+    // Extract simulation area position (translation component from last column of _SimTRS)
+    float3 simPosition = float3(_SimTRS._m03, _SimTRS._m13, _SimTRS._m23);
+    
+    // Scale particle position and adjust for centered simulation area
+    float3 worldPos = position.xyz * simScale - (simScale * 0.5);
+    
+    // Create particle scale matrix
+    float4x4 scale = float4x4(
+        _ParticleScale.x, 0, 0, 0,
+        0, _ParticleScale.y, 0, 0,
+        0, 0, _ParticleScale.z, 0,
+        0, 0, 0, 1
+    );
+
+    // Create translation matrix
+    float4x4 translation = float4x4(
+        1, 0, 0, worldPos.x,
+        0, 1, 0, worldPos.y,
+        0, 0, 1, worldPos.z,
+        0, 0, 0, 1
+    );
+
+    // Combine matrices
+    _Properties[id_1d].mat = mul(translation, scale);
+
+    // Set color based on density
+    float densityRatio = density / _RestDensity;
+    float3 lowPressureColor = float3(0.7, 0.85, 1.0); // Light blue
+    float3 highPressureColor = float3(0.0, 0.2, 0.8); // Dark blue
+    _Properties[id_1d].color = float4(lerp(lowPressureColor, highPressureColor, saturate(densityRatio - 1.0)), 1.0);
+}

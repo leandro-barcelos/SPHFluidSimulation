@@ -2,11 +2,6 @@
 #define MAX_PARTICLES_PER_VOXEL 32
 #define POW3(x) ((x)*(x)*(x))
 
-struct MeshProperties {
-    float4x4 mat;
-    float4 color;
-};
-
 static const float epsilon = 1e-6;
 static const float PI = 3.14159265358979323846264338327950288;
 static const float3 a_gravity = float3(0.0, -9.8, 0.0);
@@ -19,7 +14,6 @@ RWTexture2D<float4> _ParticleVelocityTextureWrite;
 Texture2D<float4> _ParticlePositionTexture;
 Texture2D<float4> _ParticleVelocityTexture;
 Texture2D<float> _ParticleDensityTexture;
-RWStructuredBuffer<MeshProperties> _Properties;
 StructuredBuffer<uint> _Bucket;
 
 // Parameters
@@ -35,9 +29,6 @@ float _StiffnessCoeff;
 float _DampingCoeff;
 float2 _ParticleResolution;
 uint _BucketResolution;
-float3 _SimOrigin;
-float3 _SimScale;
-float3 _ParticleScale;
 
 float3 grad_W_press(float3 r){
     const float c = 45.0 / PI;
@@ -64,9 +55,7 @@ void CSMain(uint3 id : SV_DispatchThreadID)
     uint id_1d = id.y * uint(_ParticleResolution.x) + id.x;
 
     float3 pos_i = _ParticlePositionTexture[id.xy].xyz;
-    // Ensure position is strictly within bounds before normalizing
-    float3 n_pos_i = (pos_i - _SimOrigin) / _SimScale;
-    float3 idx_3d = int3(n_pos_i * (_BucketResolution - 1));
+    float3 idx_3d = int3(pos_i * (_BucketResolution - 1));
 
     float rho_i = _ParticleDensityTexture[id.xy];
     float p_i = _GasConst * (rho_i - _RestDensity);
@@ -118,23 +107,20 @@ void CSMain(uint3 id : SV_DispatchThreadID)
     float3 f_wall = 0.0;
     float3 r = 0.0;
 
-    float3 min_pos = _SimOrigin + _EffectiveRadius;
-    float3 max_pos = (_SimOrigin + _SimScale) - _EffectiveRadius;
+    if(pos_i.x < _EffectiveRadius) 
+        r.x += _EffectiveRadius - pos_i.x;
+    else if(pos_i.x > 1 - _EffectiveRadius) 
+        r.x += 1 - pos_i.x - _EffectiveRadius;
 
-    if(pos_i.x < min_pos.x) 
-        r.x += min_pos.x - pos_i.x;
-    else if(pos_i.x > max_pos.x) 
-        r.x += max_pos.x - pos_i.x;
+    if(pos_i.y < _EffectiveRadius) 
+        r.y += _EffectiveRadius - pos_i.y;
+    else if(pos_i.y > 1 - _EffectiveRadius) 
+        r.y += 1 - pos_i.y - _EffectiveRadius;
 
-    if(pos_i.y < min_pos.y) 
-        r.y += min_pos.y - pos_i.y;
-    else if(pos_i.y > max_pos.y) 
-        r.y += max_pos.y - pos_i.y;
-
-    if(pos_i.z < min_pos.z) 
-        r.z += min_pos.z - pos_i.z;
-    else if(pos_i.z > max_pos.z) 
-        r.z += max_pos.z - pos_i.z;
+    if(pos_i.z < _EffectiveRadius) 
+        r.z += _EffectiveRadius - pos_i.z;
+    else if(pos_i.z > 1 - _EffectiveRadius) 
+        r.z += 1 - pos_i.z - _EffectiveRadius;
         
     float3 abs_r = abs(r);
     float max_r = max(abs_r.x, max(abs_r.y, abs_r.z));
@@ -164,22 +150,9 @@ void CSMain(uint3 id : SV_DispatchThreadID)
         vel_out_i = vel_in_i + float4(a_i * _TimeStep, 1.0);
     }
 
-    float4 pos_out_i = float4(pos_i, 1.0);  // Default to current position
-    
-    // Only update position if velocity is valid
-    if (!any(isnan(vel_out_i.xyz)))
-    {
-        pos_out_i = float4(pos_i, 1.0) + _TimeStep * vel_out_i;
-        pos_out_i = clamp(pos_out_i, float4(_SimOrigin, 1.0), float4(_SimOrigin + _SimScale, 1.0));
-    }
+    float4 pos_out_i = float4(pos_i, 1.0) + _TimeStep * vel_out_i;
+    pos_out_i = clamp(pos_out_i, 0.0, 1.0);
     
     _ParticleVelocityTextureWrite[id.xy] = vel_out_i;
     _ParticlePositionTextureWrite[id.xy] = pos_out_i;
-
-    _Properties[id_1d].mat = float4x4(
-        float4(_ParticleScale.x, 0, 0, pos_out_i.x),
-        float4(0, _ParticleScale.y, 0, pos_out_i.y),
-        float4(0, 0, _ParticleScale.z, pos_out_i.z),
-        float4(0, 0, 0, 1)
-    );
 }

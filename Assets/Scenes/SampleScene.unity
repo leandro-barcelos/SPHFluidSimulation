@@ -322,7 +322,7 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: 
   target: {fileID: 1147883964}
-  distance: 10
+  distance: 18
   xSpeed: 250
   ySpeed: 120
   yMinLimit: -20
@@ -359,16 +359,16 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 6b0aeab34dbf46b4aaae044c197c0fce, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  desiredParticleCount: 16384
-  particleRadius: 0.3
-  initialFluidHeight: 0.5
-  timeStep: 0
-  viscosity: 0.005
-  restDensity: 1
-  gasConstant: 200
-  stiffnessCoeff: 3000
-  dampingCoeff: 20
+  particleNumber: 65536
+  bucketResolution: 32
+  damFillRate: 0.5
+  viscosity: 0.01
+  restDensity: 1.5
+  gasConstant: 150
+  stiffnessCoeff: 5000
+  dampingCoeff: 10
   occlusionRange: 150
+  particleRadius: 0.05
   particleMaterial: {fileID: 2100000, guid: 97497a52ca4d2df07af9a295da53bcf0, type: 2}
   renderParticles: 1
 --- !u!65 &1147883966
