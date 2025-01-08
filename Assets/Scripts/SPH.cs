@@ -91,6 +91,8 @@ public class SPH : MonoBehaviour
         InitializeParticles();
 
         InitializeBucketBuffer();
+
+        InitializeCameraOrbit();
     }
 
     private void Update()
@@ -271,6 +273,13 @@ public class SPH : MonoBehaviour
         // Initialize bucket buffer
         int totalBucketSize = bucketWidth * bucketHeight * bucketDepth * MaxParticlesPerVoxel;
         bucketBuffer = new ComputeBuffer(totalBucketSize, sizeof(uint));
+    }
+
+    public void InitializeCameraOrbit()
+    {
+        var cameraOrbit = Camera.main.GetComponent<CameraOrbit>();
+
+        cameraOrbit.distance = transform.localScale.y + 10;
     }
 
     #endregion
