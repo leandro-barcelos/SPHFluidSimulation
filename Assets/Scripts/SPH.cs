@@ -235,18 +235,18 @@ public class SPH : MonoBehaviour
             for (int x = 0; x < numX && particleIndex < desiredParticleCount; x++)
             {
                 for (int z = 0; z < numZ && particleIndex < desiredParticleCount; z++)
-            {
+                {
                     Vector3 position = startPos + new Vector3(
                         (x + 0.5f) * particleSpacing,
                         (y + 0.5f) * particleSpacing,
                         (z + 0.5f) * particleSpacing
-                );
+                    );
 
-                MeshProperties props = new()
-                {
-                    Mat = Matrix4x4.TRS(position, rotation, particleScale),
-                    Color = Color.blue
-                };
+                    MeshProperties props = new()
+                    {
+                        Mat = Matrix4x4.TRS(position, rotation, particleScale),
+                        Color = Color.blue
+                    };
 
                     particlesPositions[particleIndex] = position;
                     properties[particleIndex] = props;
@@ -262,15 +262,22 @@ public class SPH : MonoBehaviour
 
     private void InitializeBucketBuffer()
     {
-        cellSize = 2 * effectiveRadius;
+        // Set cell size to effective radius for optimal neighbor search
+        cellSize = effectiveRadius;
 
+        // Calculate grid dimensions based on simulation scale
         bucketWidth = Mathf.CeilToInt(transform.localScale.x / cellSize);
         bucketHeight = Mathf.CeilToInt(transform.localScale.y / cellSize);
         bucketDepth = Mathf.CeilToInt(transform.localScale.z / cellSize);
 
-        transform.localScale = new(bucketWidth * cellSize, bucketHeight * cellSize, bucketDepth * cellSize);
+        // Adjust simulation bounds to align with grid
+        transform.localScale = new Vector3(
+            bucketWidth * cellSize,
+            bucketHeight * cellSize,
+            bucketDepth * cellSize
+        );
 
-        // Initialize bucket buffer
+        // Initialize bucket buffer with maximum possible particles per cell
         int totalBucketSize = bucketWidth * bucketHeight * bucketDepth * MaxParticlesPerVoxel;
         bucketBuffer = new ComputeBuffer(totalBucketSize, sizeof(uint));
     }
