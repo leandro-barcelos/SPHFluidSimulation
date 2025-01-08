@@ -9,7 +9,7 @@ RWStructuredBuffer<uint> _Bucket;
 
 // Parameters
 float2 _ParticleResolution;
-uint3 _BucketResolution;
+uint _BucketResolution;
 float3 _SimOrigin;
 float3 _SimScale;
 uint _NumParticles;
@@ -27,8 +27,8 @@ void CSMain(uint3 id : SV_DispatchThreadID)
 
     float3 pos = _ParticlePositionTexture[id.xy].xyz;
     float3 n_pos = (pos - _SimOrigin) / _SimScale;
-    float3 idx_3d = int3(n_pos*float3(_BucketResolution-1));
-    uint index = idx_3d.x + idx_3d.y * _BucketResolution.x + idx_3d.z * _BucketResolution.x * _BucketResolution.y;
+    float3 idx_3d = int3(n_pos * (_BucketResolution - 1));
+    uint index = idx_3d.x + idx_3d.y * _BucketResolution + idx_3d.z * _BucketResolution * _BucketResolution;
     index *= MAX_PARTICLES_PER_VOXEL;
     for (uint j = 0; j < MAX_PARTICLES_PER_VOXEL; j++)
     {

@@ -34,7 +34,7 @@ float _RestDensity;
 float _StiffnessCoeff;
 float _DampingCoeff;
 float2 _ParticleResolution;
-uint3 _BucketResolution;
+uint _BucketResolution;
 float3 _SimOrigin;
 float3 _SimScale;
 float3 _ParticleScale;
@@ -66,7 +66,7 @@ void CSMain(uint3 id : SV_DispatchThreadID)
     float3 pos_i = _ParticlePositionTexture[id.xy].xyz;
     // Ensure position is strictly within bounds before normalizing
     float3 n_pos_i = (pos_i - _SimOrigin) / _SimScale;
-    float3 idx_3d = int3(n_pos_i*float3(_BucketResolution - 1));
+    float3 idx_3d = int3(n_pos_i * (_BucketResolution - 1));
 
     float rho_i = _ParticleDensityTexture[id.xy];
     float p_i = _GasConst * (rho_i - _RestDensity);
@@ -83,7 +83,7 @@ void CSMain(uint3 id : SV_DispatchThreadID)
 
         if(all(idx_3d_j >= 0) && all((uint3)idx_3d_j < _BucketResolution))
         {
-            uint bkt_j = idx_3d_j.x + idx_3d_j.y * _BucketResolution.x + idx_3d_j.z * _BucketResolution.x * _BucketResolution.y;
+            uint bkt_j = idx_3d_j.x + idx_3d_j.y * _BucketResolution + idx_3d_j.z * _BucketResolution * _BucketResolution;
             bkt_j *= MAX_PARTICLES_PER_VOXEL;
             for (uint j2 = 0; j2 < MAX_PARTICLES_PER_VOXEL; j2++)
             {

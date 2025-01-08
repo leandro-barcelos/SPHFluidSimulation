@@ -34,7 +34,7 @@ public class SPH : MonoBehaviour
 
     [Header("Particle Initialization")]
     [Range(1024, 4194304)] public int desiredParticleCount = 1024;
-    [Range(0.001f, 1f)] public float particleRadius;
+    [Range(1, 256)] public int bucketResolution = 256;
     [Range(0.01f, 1f)] public float initialFluidHeight;
 
     [Header("Parameters")]
@@ -63,8 +63,6 @@ public class SPH : MonoBehaviour
     private float particleMass;
 
     // Bucket
-    private int bucketWidth, bucketHeight, bucketDepth;
-    private float cellSize;
     private ComputeBuffer bucketBuffer;
 
     // Rendering
@@ -150,17 +148,8 @@ public class SPH : MonoBehaviour
 
     private void InitializeParticles()
     {
-        // Calculate particle spacing based on desired density
-        float particleSpacing = 2.0f * particleRadius;
-
-        // Calculate smoothing length (effective radius) as a multiple of particle spacing
-        // Typically 2.0 times the particle spacing for 3D simulations
-        effectiveRadius = 2.0f * particleSpacing;
-
-        // Calculate particle mass using rest density and effective volume
-        // Volume of support domain = (4/3)πh³, where h is the smoothing length
-        float supportVolume = 4.0f / 3.0f * Mathf.PI * Mathf.Pow(effectiveRadius, 3);
-        particleMass = restDensity * supportVolume / MaxParticlesPerVoxel;
+        effectiveRadius = 1f / (bucketResolution - 1);
+        particleMass = damFillRate / particleNumber;
 
         // Initialize render properties
         _particleMesh = OctahedronSphereCreator.Create(1, 1f);
@@ -262,23 +251,8 @@ public class SPH : MonoBehaviour
 
     private void InitializeBucketBuffer()
     {
-        // Set cell size to effective radius for optimal neighbor search
-        cellSize = effectiveRadius;
-
-        // Calculate grid dimensions based on simulation scale
-        bucketWidth = Mathf.CeilToInt(transform.localScale.x / cellSize);
-        bucketHeight = Mathf.CeilToInt(transform.localScale.y / cellSize);
-        bucketDepth = Mathf.CeilToInt(transform.localScale.z / cellSize);
-
-        // Adjust simulation bounds to align with grid
-        transform.localScale = new Vector3(
-            bucketWidth * cellSize,
-            bucketHeight * cellSize,
-            bucketDepth * cellSize
-        );
-
         // Initialize bucket buffer with maximum possible particles per cell
-        int totalBucketSize = bucketWidth * bucketHeight * bucketDepth * MaxParticlesPerVoxel;
+        int totalBucketSize = bucketResolution * bucketResolution * bucketResolution * MaxParticlesPerVoxel;
         bucketBuffer = new ComputeBuffer(totalBucketSize, sizeof(uint));
     }
 
@@ -296,7 +270,7 @@ public class SPH : MonoBehaviour
     private void BucketGeneration()
     {
         // Clear bucket buffer with particle count as empty marker
-        int totalBucketSize = bucketWidth * bucketHeight * bucketDepth * MaxParticlesPerVoxel;
+        int totalBucketSize = bucketResolution * bucketResolution * bucketResolution * MaxParticlesPerVoxel;
         uint[] clearData = new uint[totalBucketSize];
         for (int i = 0; i < totalBucketSize; i++)
             clearData[i] = (uint)desiredParticleCount;
@@ -305,7 +279,7 @@ public class SPH : MonoBehaviour
         // Set shader parameters
         bucketShader.SetBuffer(0, ShaderIDs.Bucket, bucketBuffer);
         bucketShader.SetTexture(0, ShaderIDs.ParticlePositionTexture, particlePositionTextures[Read]);
-        bucketShader.SetInt(ShaderIDs.NumParticles, desiredParticleCount);
+        bucketShader.SetInt(ShaderIDs.BucketResolution, bucketResolution);
         bucketShader.SetVector(ShaderIDs.ParticleResolution, new Vector2(particleTextureResolution, particleTextureResolution));
         bucketShader.SetVector(ShaderIDs.BucketResolution, new(bucketWidth, bucketHeight, bucketDepth));
         bucketShader.SetVector(ShaderIDs.SimOrigin, transform.position - transform.localScale / 2);
@@ -327,13 +301,12 @@ public class SPH : MonoBehaviour
         densityShader.SetTexture(0, ShaderIDs.ParticlePositionTexture, particlePositionTextures[Read]);
         densityShader.SetBuffer(0, ShaderIDs.Bucket, bucketBuffer);
 
-        densityShader.SetInt(ShaderIDs.NumParticles, desiredParticleCount);
+        densityShader.SetInt(ShaderIDs.BucketResolution, bucketResolution);
         densityShader.SetFloat(ShaderIDs.ParticleMass, particleMass);
         densityShader.SetFloat(ShaderIDs.EffectiveRadius2, effectiveRadius * effectiveRadius);
         densityShader.SetFloat(ShaderIDs.EffectiveRadius9, Mathf.Pow(effectiveRadius, 9));
         densityShader.SetVector(ShaderIDs.SimOrigin, transform.position - transform.localScale / 2);
         densityShader.SetVector(ShaderIDs.SimScale, transform.localScale);
-        densityShader.SetVector(ShaderIDs.BucketResolution, new Vector3(bucketWidth, bucketHeight, bucketDepth));
         densityShader.SetVector(ShaderIDs.ParticleResolution, new Vector2(particleTextureResolution, particleTextureResolution));
 
         // Calculate dispatch size for 2D thread groups
@@ -352,7 +325,7 @@ public class SPH : MonoBehaviour
         velPosShader.SetBuffer(0, ShaderIDs.Bucket, bucketBuffer);
         velPosShader.SetBuffer(0, ShaderIDs.Properties, _particleMeshPropertiesBuffer);
 
-        velPosShader.SetInt(ShaderIDs.NumParticles, desiredParticleCount);
+        velPosShader.SetInt(ShaderIDs.BucketResolution, bucketResolution);
         velPosShader.SetFloat(ShaderIDs.EffectiveRadius, effectiveRadius);
         velPosShader.SetFloat(ShaderIDs.EffectiveRadius6, Mathf.Pow(effectiveRadius, 6));
         velPosShader.SetFloat(ShaderIDs.ParticleMass, particleMass);
@@ -363,7 +336,7 @@ public class SPH : MonoBehaviour
         velPosShader.SetFloat(ShaderIDs.StiffnessCoeff, stiffnessCoeff);
         velPosShader.SetFloat(ShaderIDs.DampingCoeff, dampingCoeff);
         velPosShader.SetVector(ShaderIDs.ParticleResolution, new Vector2(particleTextureResolution, particleTextureResolution));
-        velPosShader.SetVector(ShaderIDs.BucketResolution, new Vector3(bucketWidth, bucketHeight, bucketDepth));
+        velPosShader.SetInt(ShaderIDs.BucketResolution, bucketResolution);
         velPosShader.SetVector(ShaderIDs.SimOrigin, transform.position - transform.localScale / 2);
         velPosShader.SetVector(ShaderIDs.SimScale, transform.localScale);
         velPosShader.SetVector(ShaderIDs.ParticleScale, new(particleRadius, particleRadius, particleRadius));
