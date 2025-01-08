@@ -32,11 +32,13 @@ public class SPH : MonoBehaviour
 
     #region Public
 
-    [Header("Parameters")]
-    [Range(0f, 1f / 60f)] public float timeStep = 1f / 60f;
+    [Header("Particle Initialization")]
     [Range(1024, 4194304)] public int desiredParticleCount = 1024;
     [Range(0.001f, 1f)] public float particleRadius;
-    [Range(0.01f, 1f)] public float spawnAreaFillRate;
+    [Range(0.01f, 1f)] public float initialFluidHeight;
+
+    [Header("Parameters")]
+    [Range(0f, 1f / 60f)] public float timeStep = 1f / 60f;
     [Range(0.001f, 0.01f)] public float viscosity = 0.01f;
     [Range(1f, 2f)] public float restDensity = 1.5f;
     [Range(100f, 500f)] public float gasConstant = 150.0f;
@@ -58,15 +60,12 @@ public class SPH : MonoBehaviour
     private RenderTexture[] particleVelocityTextures;
     private RenderTexture particleDensityTexture;
     private int particleTextureResolution;
-    private float particleMass = 1.0f;  // Default to 1.0
+    private float particleMass;
 
     // Bucket
     private int bucketWidth, bucketHeight, bucketDepth;
     private float cellSize;
     private ComputeBuffer bucketBuffer;
-
-    // Boxes
-    private List<Bounds> boxes;
 
     // Rendering
     private Mesh _particleMesh;
@@ -87,9 +86,9 @@ public class SPH : MonoBehaviour
 
         InitShaders();
 
-        InitializeBoxes();
+        CreateParticleTextures();
 
-        InitializeParticleTextures();
+        InitializeParticles();
 
         InitializeBucketBuffer();
     }
@@ -128,7 +127,7 @@ public class SPH : MonoBehaviour
         velPosShader = Resources.Load<ComputeShader>("VelPos");
     }
 
-    private void InitializeParticleTextures()
+    private void CreateParticleTextures()
     {
         // Create particle position textures
         particlePositionTextures = new RenderTexture[2];
@@ -145,8 +144,42 @@ public class SPH : MonoBehaviour
         // Create density texture
         particleDensityTexture = CreateRenderTexture2D(particleTextureResolution, particleTextureResolution, RenderTextureFormat.RFloat);
 
-        // Initialize positions
+    }
+
+    private void InitializeParticles()
+    {
+        // Calculate particle spacing based on desired density
+        float particleSpacing = 2.0f * particleRadius;
+
+        // Calculate smoothing length (effective radius) as a multiple of particle spacing
+        // Typically 2.0 times the particle spacing for 3D simulations
+        effectiveRadius = 2.0f * particleSpacing;
+
+        // Calculate particle mass using rest density and effective volume
+        // Volume of support domain = (4/3)πh³, where h is the smoothing length
+        float supportVolume = 4.0f / 3.0f * Mathf.PI * Mathf.Pow(effectiveRadius, 3);
+        particleMass = restDensity * supportVolume / MaxParticlesPerVoxel;
+
+        // Initialize render properties
+        _particleMesh = OctahedronSphereCreator.Create(1, 1f);
+        _bounds = new Bounds(transform.position, Vector3.one * (occlusionRange + 1));
+
+        uint[] args = { 0, 0, 0, 0, 0 };
+        args[0] = _particleMesh.GetIndexCount(0);
+        args[1] = (uint)desiredParticleCount;
+        args[2] = _particleMesh.GetIndexStart(0);
+        args[3] = _particleMesh.GetBaseVertex(0);
+
+        _particleArgsBuffer = new ComputeBuffer(1, args.Length * sizeof(uint), ComputeBufferType.IndirectArguments);
+        _particleArgsBuffer.SetData(args);
+
+        _particleMeshPropertiesBuffer = new ComputeBuffer(desiredParticleCount, MeshProperties.Size());
+
         Vector3[] particlesPositions = CreateParticlePositions();
+
+        particleMaterial.SetBuffer(ShaderIDs.Properties, _particleMeshPropertiesBuffer);
+
+        // Set texture to positions
         Texture2D particlePositionTexture2D = new(particleTextureResolution, particleTextureResolution, TextureFormat.RGBAFloat, false);
         Color[] particleColors = new Color[desiredParticleCount];
 
@@ -168,65 +201,43 @@ public class SPH : MonoBehaviour
 
     private Vector3[] CreateParticlePositions()
     {
-        if (desiredParticleCount == 0)
-            return new Vector3[0];
-
-        _particleMesh = OctahedronSphereCreator.Create(1, 1f);
-        _bounds = new Bounds(transform.position, Vector3.one * (occlusionRange + 1));
-
-        uint[] args = { 0, 0, 0, 0, 0 };
-        args[0] = _particleMesh.GetIndexCount(0);
-        args[1] = (uint)desiredParticleCount;
-        args[2] = _particleMesh.GetIndexStart(0);
-        args[3] = _particleMesh.GetBaseVertex(0);
-
-        _particleArgsBuffer = new ComputeBuffer(1, args.Length * sizeof(uint), ComputeBufferType.IndirectArguments);
-        _particleArgsBuffer.SetData(args);
-
-        _particleMeshPropertiesBuffer = new ComputeBuffer(desiredParticleCount, MeshProperties.Size());
+        Quaternion rotation = Quaternion.identity;
+        Vector3 particleScale = new(particleRadius * 2, particleRadius * 2, particleRadius * 2);
 
         Vector3[] particlesPositions = new Vector3[desiredParticleCount];
         MeshProperties[] properties = new MeshProperties[desiredParticleCount];
-        var totalVolume = 0f;
 
-        Quaternion rotation = Quaternion.identity;
+        // Calculate dimensions for grid-based particle placement
+        float particleSpacing = 2.0f * particleRadius;
+        float particleVolume = particleMass * restDensity;
 
-        // Calculate total volume of spawn boxes
-        foreach (var box in boxes)
+        // Calculate required volume based on particle count and spacing
+        float totalVolume = desiredParticleCount * particleVolume;
+        float sideLengthXYZ = Mathf.Pow(totalVolume, 1f / 3f);
+
+        // Adjust simulation scale to fit particles
+        transform.localScale = new Vector3(sideLengthXYZ, sideLengthXYZ / initialFluidHeight, sideLengthXYZ);
+
+        // Calculate number of particles in each dimension
+        int numX = Mathf.FloorToInt(transform.localScale.x / particleSpacing);
+        int numY = Mathf.FloorToInt(transform.localScale.y * initialFluidHeight / particleSpacing);
+        int numZ = Mathf.FloorToInt(transform.localScale.z / particleSpacing);
+
+        // Offset to center particles in the volume
+        Vector3 startPos = transform.position - transform.localScale / 2.0f;
+
+        // Create particles in a grid pattern
+        int particleIndex = 0;
+        for (int y = 0; y < numY && particleIndex < desiredParticleCount; y++)
         {
-            var volume = box.size.x * box.size.y * box.size.z;
-            totalVolume += volume;
-        }
-
-        effectiveRadius = 4 * particleRadius;
-        particleMass = Mathf.Pow(4 * Mathf.Pow(particleRadius, 3) * Mathf.PI / (3 * MaxParticlesPerVoxel), 1f / 3f);
-
-        Vector3 particleScale = new(particleRadius * 2, particleRadius * 2, particleRadius * 2);
-
-        // Distribute particles among boxes
-        var particlesCreatedSoFar = 0;
-        for (var i = 0; i < boxes.Count; i++)
-        {
-            var box = boxes[i];
-            var volume = box.size.x * box.size.y * box.size.z;
-
-            int particlesInBox;
-            if (i < boxes.Count - 1)
+            for (int x = 0; x < numX && particleIndex < desiredParticleCount; x++)
             {
-                particlesInBox = Mathf.FloorToInt(desiredParticleCount * volume / totalVolume);
-            }
-            else
+                for (int z = 0; z < numZ && particleIndex < desiredParticleCount; z++)
             {
-                particlesInBox = desiredParticleCount - particlesCreatedSoFar;
-            }
-
-            // Create particles with jittered positions
-            for (var j = 0; j < particlesInBox; j++)
-            {
-                var position = new Vector3(
-                    Random.Range(box.min.x, box.max.x),
-                    Random.Range(box.min.y, box.max.y),
-                    Random.Range(box.min.z, box.max.z)
+                    Vector3 position = startPos + new Vector3(
+                        (x + 0.5f) * particleSpacing,
+                        (y + 0.5f) * particleSpacing,
+                        (z + 0.5f) * particleSpacing
                 );
 
                 MeshProperties props = new()
@@ -235,33 +246,16 @@ public class SPH : MonoBehaviour
                     Color = Color.blue
                 };
 
-                particlesPositions[particlesCreatedSoFar + j] = position;
-                properties[particlesCreatedSoFar + j] = props;
+                    particlesPositions[particleIndex] = position;
+                    properties[particleIndex] = props;
+                    particleIndex++;
+                }
             }
-
-            particlesCreatedSoFar += particlesInBox;
         }
 
         _particleMeshPropertiesBuffer.SetData(properties);
-        particleMaterial.SetBuffer("_Properties", _particleMeshPropertiesBuffer);
 
         return particlesPositions;
-    }
-
-    private void InitializeBoxes()
-    {
-        boxes = new List<Bounds>();
-        foreach (var meshFilter in FindObjectsByType<MeshFilter>(FindObjectsSortMode.None))
-        {
-            if (meshFilter.gameObject.CompareTag("Spawn"))
-            {
-                var center = meshFilter.transform.position;
-                var size = meshFilter.transform.localScale;
-                var box = new Bounds(center, size);
-                boxes.Add(box);
-                meshFilter.gameObject.SetActive(false);
-            }
-        }
     }
 
     private void InitializeBucketBuffer()

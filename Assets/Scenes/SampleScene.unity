@@ -359,11 +359,10 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 6b0aeab34dbf46b4aaae044c197c0fce, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  timeStep: 0.016666668
-  desiredParticleCount: 16386
-  particleRadius: 0.05
-  spawnAreaFillRate: 0.01
-  wallWeightNumSamples: 100
+  desiredParticleCount: 16384
+  particleRadius: 0.3
+  initialFluidHeight: 0.5
+  timeStep: 0
   viscosity: 0.005
   restDensity: 1
   gasConstant: 200
@@ -372,7 +371,6 @@ MonoBehaviour:
   occlusionRange: 150
   particleMaterial: {fileID: 2100000, guid: 97497a52ca4d2df07af9a295da53bcf0, type: 2}
   renderParticles: 1
-  fastSweepingPasses: 3
 --- !u!65 &1147883966
 BoxCollider:
   m_ObjectHideFlags: 0
@@ -457,7 +455,7 @@ Transform:
   serializedVersion: 2
   m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
   m_LocalPosition: {x: 0, y: 0, z: 0}
-  m_LocalScale: {x: 5, y: 6, z: 5}
+  m_LocalScale: {x: 10, y: 5, z: 10}
   m_ConstrainProportionsScale: 0
   m_Children: []
   m_Father: {fileID: 0}
@@ -480,7 +478,7 @@ GameObject:
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
   m_StaticEditorFlags: 0
-  m_IsActive: 1
+  m_IsActive: 0
 --- !u!65 &1584344998
 BoxCollider:
   m_ObjectHideFlags: 0
