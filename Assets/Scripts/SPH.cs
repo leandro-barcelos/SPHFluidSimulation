@@ -32,6 +32,10 @@ public class SPH : MonoBehaviour
 
     #region Public
 
+    [Header("Presets")]
+    public bool damBreak;
+    public bool wholeArea;
+
     [Header("Initialization")]
     [Range(1024, 4194304)] public int particleNumber = 1024;
     [Range(1, 256)] public int bucketResolution = 256;
@@ -158,7 +162,6 @@ public class SPH : MonoBehaviour
     private void InitializeParticles()
     {
         effectiveRadius = 1f / (bucketResolution - 1);
-        particleMass = damFillRate / particleNumber;
 
         // Initialize render properties
         _particleMesh = OctahedronSphereCreator.Create(1, 1f);
@@ -175,7 +178,9 @@ public class SPH : MonoBehaviour
 
         _particleMeshPropertiesBuffer = new ComputeBuffer(particleNumber, MeshProperties.Size());
 
-        Vector3[] particlesPositions = CreateParticlePositions();
+        Vector3[] particlesPositions = damBreak ? InitializeDamBreak() :
+                                       wholeArea ? InitializeWholeArea() :
+                                       new Vector3[particleNumber];
 
         particleMaterial.SetBuffer(ShaderIDs.Properties, _particleMeshPropertiesBuffer);
 
@@ -199,8 +204,10 @@ public class SPH : MonoBehaviour
         ClearTexture2D(particleVelocityTextures[Read]);
     }
 
-    private Vector3[] CreateParticlePositions()
+    private Vector3[] InitializeDamBreak()
     {
+        particleMass = damFillRate / particleNumber;
+
         Quaternion rotation = Quaternion.identity;
         Vector3 particleScale = new(particleRadius * 2, particleRadius * 2, particleRadius * 2);
 
@@ -228,6 +235,40 @@ public class SPH : MonoBehaviour
                 Mathf.PerlinNoise(position.y, i) * 2 - 1,
                 Mathf.PerlinNoise(position.z, i) * 2 - 1
             ) * particleCubeSize;
+
+            particlesPositions[i] = position;
+
+            MeshProperties props = new()
+            {
+                Mat = Matrix4x4.TRS(position, rotation, particleScale),
+                Color = Color.blue
+            };
+
+            properties[i] = props;
+        }
+
+        _particleMeshPropertiesBuffer.SetData(properties);
+
+        return particlesPositions;
+    }
+
+    private Vector3[] InitializeWholeArea()
+    {
+        particleMass = damFillRate / particleNumber;
+
+        Quaternion rotation = Quaternion.identity;
+        Vector3 particleScale = new(particleRadius * 2, particleRadius * 2, particleRadius * 2);
+
+        Vector3[] particlesPositions = new Vector3[particleNumber];
+        MeshProperties[] properties = new MeshProperties[particleNumber];
+
+        for (var i = 0; i < particleNumber; i++)
+        {
+            var position = new Vector3(
+                Random.Range(0f, 1f),
+                Random.Range(0f, 1f),
+                Random.Range(0f, 1f)
+            );
 
             particlesPositions[i] = position;
 
