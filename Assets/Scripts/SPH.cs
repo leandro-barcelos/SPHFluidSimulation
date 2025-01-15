@@ -196,7 +196,7 @@ public class SPH : MonoBehaviour
         Destroy(particlePositionTexture2D);
 
         // Initialize velocities to zero
-        ClearTexture(particleVelocityTextures[Read]);
+        ClearTexture2D(particleVelocityTextures[Read]);
     }
 
     private Vector3[] CreateParticlePositions()
@@ -278,7 +278,7 @@ public class SPH : MonoBehaviour
     private void DensityCalculation()
     {
         // Clear density texture
-        ClearTexture(particleDensityTexture);
+        ClearTexture2D(particleDensityTexture);
 
         // Set shader parameters
         densityShader.SetTexture(0, ShaderIDs.ParticleDensityTexture, particleDensityTexture);
@@ -358,22 +358,30 @@ public class SPH : MonoBehaviour
         return rt;
     }
 
-    private void ClearTexture(RenderTexture texture)
+    private void ClearTexture2D(RenderTexture texture)
     {
-        if (texture.dimension == TextureDimension.Tex2D)
-        {
-            clearShader.SetTexture(0, ShaderIDs.Texture2D, texture);
+        if (texture.dimension != TextureDimension.Tex2D)
+            return;
+
             int threadGroupsX = Mathf.CeilToInt((float)texture.width / NumThreads);
             int threadGroupsY = Mathf.CeilToInt((float)texture.height / NumThreads);
-            clearShader.Dispatch(0, threadGroupsX, threadGroupsY, 1);
-        }
-        else if (texture.dimension == TextureDimension.Tex3D)
+
+        int kernel;
+
+        switch (texture.format)
         {
-            clearShader.SetTexture(1, ShaderIDs.Texture3D, texture);
-            int threadGroupsX = Mathf.CeilToInt((float)texture.width / NumThreads);
-            int threadGroupsY = Mathf.CeilToInt((float)texture.height / NumThreads);
-            int threadGroupsZ = Mathf.CeilToInt((float)texture.volumeDepth / NumThreads);
-            clearShader.Dispatch(1, threadGroupsX, threadGroupsY, threadGroupsZ);
+            case RenderTextureFormat.RFloat:
+                kernel = clearShader.FindKernel("ClearFloat");
+
+                clearShader.SetTexture(kernel, ShaderIDs.Texture2D, texture);
+                clearShader.Dispatch(kernel, threadGroupsX, threadGroupsY, 1);
+                break;
+            case RenderTextureFormat.ARGBFloat:
+                kernel = clearShader.FindKernel("ClearFloat4");
+
+                clearShader.SetTexture(kernel, ShaderIDs.Texture2D4, texture);
+                clearShader.Dispatch(kernel, threadGroupsX, threadGroupsY, 1);
+                break;
         }
     }
 
