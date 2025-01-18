@@ -322,7 +322,7 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: 
   target: {fileID: 1147883964}
-  distance: 18
+  distance: 8
   xSpeed: 250
   ySpeed: 120
   yMinLimit: -20
@@ -359,18 +359,23 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 6b0aeab34dbf46b4aaae044c197c0fce, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  particleNumber: 65536
-  bucketResolution: 32
-  damFillRate: 0.5
+  damBreak: 1
+  wholeArea: 0
+  particleNumber: 262144
+  bucketResolution: 47
+  damFillRate: 0.8
+  particleMass: 0.000001
   viscosity: 0.01
   restDensity: 1.5
   gasConstant: 150
   stiffnessCoeff: 5000
   dampingCoeff: 10
   occlusionRange: 150
-  particleRadius: 0.05
+  particleRadius: 0.01
   particleMaterial: {fileID: 2100000, guid: 97497a52ca4d2df07af9a295da53bcf0, type: 2}
   renderParticles: 1
+  lowSpeed: 0
+  highSpeed: 0.5
 --- !u!65 &1147883966
 BoxCollider:
   m_ObjectHideFlags: 0
@@ -455,7 +460,7 @@ Transform:
   serializedVersion: 2
   m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
   m_LocalPosition: {x: 0, y: 0, z: 0}
-  m_LocalScale: {x: 10, y: 5, z: 10}
+  m_LocalScale: {x: 5, y: 5, z: 5}
   m_ConstrainProportionsScale: 0
   m_Children: []
   m_Father: {fileID: 0}

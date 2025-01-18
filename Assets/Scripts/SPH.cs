@@ -42,9 +42,10 @@ public class SPH : MonoBehaviour
     [Range(0.01f, 1f)] public float damFillRate = 0.5f;
 
     [Header("Parameters")]
-    [Range(0.01f, 0.1f)] public float viscosity = 0.01f;
-    [Range(1f, 2f)] public float restDensity = 1.5f;
-    [Range(100f, 500f)] public float gasConstant = 150.0f;
+    [Range(0.000001f, 0.0001f)] public float particleMass;
+    [Range(0f, 0.1f)] public float viscosity = 0.01f;
+    [Range(0f, 5f)] public float restDensity = 1.5f;
+    [Range(1f, 5000f)] public float gasConstant = 150.0f;
     [Range(1000f, 10000f)] public float stiffnessCoeff = 5000.0f;
     [Range(1f, 50f)] public float dampingCoeff = 10.0f;
 
@@ -66,7 +67,6 @@ public class SPH : MonoBehaviour
     private RenderTexture[] particleVelocityTextures;
     private RenderTexture particleDensityTexture;
     private int particleTextureResolution;
-    private float particleMass;
 
     // Bucket
     private ComputeBuffer bucketBuffer;
@@ -102,7 +102,6 @@ public class SPH : MonoBehaviour
     private void Update()
     {
         simTRS = transform.localToWorldMatrix;
-
         BucketGeneration();
         DensityCalculation();
 
@@ -408,8 +407,8 @@ public class SPH : MonoBehaviour
         if (texture.dimension != TextureDimension.Tex2D)
             return;
 
-            int threadGroupsX = Mathf.CeilToInt((float)texture.width / NumThreads);
-            int threadGroupsY = Mathf.CeilToInt((float)texture.height / NumThreads);
+        int threadGroupsX = Mathf.CeilToInt((float)texture.width / NumThreads);
+        int threadGroupsY = Mathf.CeilToInt((float)texture.height / NumThreads);
 
         int kernel;
 
