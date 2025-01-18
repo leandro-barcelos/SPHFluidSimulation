@@ -1,4 +1,4 @@
-#define NUM_THREADS 8
+#define NUM_THREADS 32
 
 RWTexture2D<float> _Texture2D;
 RWTexture2D<float4> _Texture2D4;

@@ -8,7 +8,7 @@ public class SPH : MonoBehaviour
 {
     #region Constants
 
-    const int NumThreads = 8;
+    const int NumThreads = 32;
     const int MaxParticlesPerVoxel = 32;
     const int Read = 0;
     const int Write = 1;

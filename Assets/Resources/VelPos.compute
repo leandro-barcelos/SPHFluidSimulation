@@ -1,4 +1,4 @@
-#define NUM_THREADS 8
+#define NUM_THREADS 32
 #define MAX_PARTICLES_PER_VOXEL 32
 #define POW3(x) ((x)*(x)*(x))
 
