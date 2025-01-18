@@ -7,9 +7,10 @@ struct MeshProperties {
 
 RWStructuredBuffer<MeshProperties> _Properties;
 Texture2D<float4> _ParticlePositionTexture;
-Texture2D<float> _ParticleDensityTexture;
+Texture2D<float4> _ParticleVelocityTexture;
 
-float _RestDensity;
+float _LowSpeed;
+float _HighSpeed;
 float2 _ParticleResolution;
 float3 _ParticleScale;
 float4x4 _SimTRS;
@@ -27,7 +28,7 @@ void CSMain (uint3 id : SV_DispatchThreadID)
 
     // Sample position and density
     float4 position = _ParticlePositionTexture[id.xy];
-    float density = _ParticleDensityTexture[id.xy];
+    float speed = length(_ParticleVelocityTexture[id.xy].xyz);
 
     // Extract simulation area scale (diagonal elements of _SimTRS)
     float3 simScale = float3(_SimTRS._m00, _SimTRS._m11, _SimTRS._m22);
@@ -57,9 +58,7 @@ void CSMain (uint3 id : SV_DispatchThreadID)
     // Combine matrices
     _Properties[id_1d].mat = mul(translation, scale);
 
-    // Set color based on density
-    float densityRatio = density / _RestDensity;
-    float3 lowPressureColor = float3(0.7, 0.85, 1.0); // Light blue
-    float3 highPressureColor = float3(0.0, 0.2, 0.8); // Dark blue
-    _Properties[id_1d].color = float4(lerp(lowPressureColor, highPressureColor, saturate(densityRatio - 1.0)), 1.0);
+    // Set color based on speed
+    float t = saturate((speed - _LowSpeed) / (_HighSpeed - _LowSpeed));
+    _Properties[id_1d].color = lerp(float4(0, 0, 1, 1), float4(1, 0, 0, 1), t);
 }

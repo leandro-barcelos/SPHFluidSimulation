@@ -27,4 +27,6 @@ public class ShaderIDs
     public static readonly int StiffnessCoeff = Shader.PropertyToID("_StiffnessCoeff");
     public static readonly int DampingCoeff = Shader.PropertyToID("_DampingCoeff");
     public static readonly int SimTRS = Shader.PropertyToID("_SimTRS");
+    public static readonly int HighSpeed = Shader.PropertyToID("_HighSpeed");
+    public static readonly int LowSpeed = Shader.PropertyToID("_LowSpeed");
 }

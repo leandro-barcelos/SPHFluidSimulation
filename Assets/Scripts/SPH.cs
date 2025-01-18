@@ -53,6 +53,8 @@ public class SPH : MonoBehaviour
     [Range(0.001f, 1f)] public float particleRadius;
     public Material particleMaterial;
     public bool renderParticles;
+    [Range(0f, 1000f)] public float lowSpeed;
+    [Range(0f, 1000f)] public float highSpeed;
 
     #endregion
 
@@ -368,10 +370,11 @@ public class SPH : MonoBehaviour
     private void UpdateMeshProperties()
     {
         updateMeshPropertiesShader.SetTexture(0, ShaderIDs.ParticlePositionTexture, particlePositionTextures[Read]);
-        updateMeshPropertiesShader.SetTexture(0, ShaderIDs.ParticleDensityTexture, particleDensityTexture);
+        updateMeshPropertiesShader.SetTexture(0, ShaderIDs.ParticleVelocityTexture, particleVelocityTextures[Read]);
         updateMeshPropertiesShader.SetBuffer(0, ShaderIDs.Properties, _particleMeshPropertiesBuffer);
 
-        updateMeshPropertiesShader.SetFloat(ShaderIDs.RestDensity, restDensity);
+        updateMeshPropertiesShader.SetFloat(ShaderIDs.HighSpeed, highSpeed);
+        updateMeshPropertiesShader.SetFloat(ShaderIDs.LowSpeed, lowSpeed);
         updateMeshPropertiesShader.SetVector(ShaderIDs.ParticleResolution, new Vector2(particleTextureResolution, particleTextureResolution));
         updateMeshPropertiesShader.SetVector(ShaderIDs.ParticleScale, new(particleRadius, particleRadius, particleRadius));
         updateMeshPropertiesShader.SetMatrix(ShaderIDs.SimTRS, simTRS);
