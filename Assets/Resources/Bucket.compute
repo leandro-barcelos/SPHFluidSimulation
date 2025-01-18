@@ -34,3 +34,20 @@ void CSMain(uint3 id : SV_DispatchThreadID)
         if(original==_NumParticles) break;
     }
 }
+
+#pragma kernel ClearBucket
+
+[numthreads(10, 10, 10)]
+void ClearBucket(uint3 id : SV_DispatchThreadID)
+{
+    // Check if we're within texture bounds
+    if (any(id >= _BucketResolution))
+        return;
+
+    uint idx = id.x + id.y * _BucketResolution + id.z * _BucketResolution * _BucketResolution;
+    idx *= MAX_PARTICLES_PER_VOXEL;
+    for (uint j = 0; j < MAX_PARTICLES_PER_VOXEL; j++)
+    {
+        _Bucket[idx + j] = _NumParticles;
+    }
+}

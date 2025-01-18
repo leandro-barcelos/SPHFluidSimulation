@@ -299,19 +299,20 @@ public class SPH : MonoBehaviour
 
     private void BucketGeneration()
     {
-        // Clear bucket buffer with particle count as empty marker
-        int totalBucketSize = bucketResolution * bucketResolution * bucketResolution * MaxParticlesPerVoxel;
-        uint[] clearData = new uint[totalBucketSize];
-        for (int i = 0; i < totalBucketSize; i++)
-            clearData[i] = (uint)particleNumber;
-        bucketBuffer.SetData(clearData);
-
         // Set shader parameters
-        bucketShader.SetBuffer(0, ShaderIDs.Bucket, bucketBuffer);
-        bucketShader.SetTexture(0, ShaderIDs.ParticlePositionTexture, particlePositionTextures[Read]);
         bucketShader.SetInt(ShaderIDs.NumParticles, particleNumber);
         bucketShader.SetInt(ShaderIDs.BucketResolution, bucketResolution);
         bucketShader.SetVector(ShaderIDs.ParticleResolution, new Vector2(particleTextureResolution, particleTextureResolution));
+
+        // Clear bucket buffer with particle count as empty marker
+        bucketShader.SetBuffer(1, ShaderIDs.Bucket, bucketBuffer);
+        var bucketThreadGroups = Mathf.CeilToInt((float)bucketResolution / 10);
+
+        bucketShader.Dispatch(1, bucketThreadGroups, bucketThreadGroups, bucketThreadGroups);
+
+        // Generate Bucket
+        bucketShader.SetBuffer(0, ShaderIDs.Bucket, bucketBuffer);
+        bucketShader.SetTexture(0, ShaderIDs.ParticlePositionTexture, particlePositionTextures[Read]);
 
         bucketShader.Dispatch(0, threadGroups, threadGroups, 1);
     }
