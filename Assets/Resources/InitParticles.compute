@@ -1,0 +1,107 @@
+#define NUM_THREADS 32
+
+#include "noiseSimplex.cginc"
+
+RWTexture2D<float4> _ParticlePositionTexture;
+
+int _ParticleResolution;
+float _DamFillRate;
+
+#pragma kernel Preset1
+
+[numthreads(NUM_THREADS, NUM_THREADS, 1)]
+void Preset1 (uint3 id : SV_DispatchThreadID)
+{
+    // Check if we're within texture bounds
+    if (any(id.xy >= uint(_ParticleResolution)))
+        return;
+
+    uint particleCount = _ParticleResolution * _ParticleResolution;
+    uint particlePerDim = uint(ceil(pow(particleCount / _DamFillRate, 1.0 / 3.0)));
+
+    uint xSize = uint(ceil(particlePerDim * _DamFillRate));
+    uint ySize = particlePerDim;
+    uint zSize = particlePerDim;
+
+    float particleCubeSize = 1.0 / float(particlePerDim);
+
+    int i = id.x + id.y * _ParticleResolution;
+
+    float4 pos = float4(
+        particleCubeSize / 2.0 + float(uint(i / uint(zSize * ySize))) * _DamFillRate / float(xSize),
+        particleCubeSize / 2.0 + float(uint(i / zSize) % ySize) * 0.9 / float(ySize),
+        particleCubeSize / 2.0 + float(i % zSize) * 1.0 / float(zSize),
+        1.0
+    );
+
+    pos += snoise(pos + i) * particleCubeSize;
+    pos.w = 1.0;
+
+    _ParticlePositionTexture[id.xy] = pos;
+}
+
+#pragma kernel Preset2
+
+[numthreads(NUM_THREADS, NUM_THREADS, 1)]
+void Preset2 (uint3 id : SV_DispatchThreadID)
+{
+    // Check if we're within texture bounds
+    if (any(id.xy >= uint(_ParticleResolution)))
+        return;
+
+    uint particleCount = _ParticleResolution * _ParticleResolution;
+    uint particlePerDim = uint(ceil(pow(particleCount / (_DamFillRate * _DamFillRate), 1.0 / 3.0)));
+
+    uint xSize = uint(ceil(particlePerDim * _DamFillRate));
+    uint ySize = particlePerDim;
+    uint zSize = uint(ceil(particlePerDim * _DamFillRate));
+
+    float particleCubeSize = 1.0 / float(particlePerDim);
+
+    int i = id.x + id.y * _ParticleResolution;
+
+    float4 pos = float4(
+        particleCubeSize / 2.0 + _DamFillRate / 2.0 + float(uint(i / uint(zSize * ySize)))  * _DamFillRate / float(xSize),
+        particleCubeSize / 2.0 + float(uint(i / zSize) % ySize) * 0.9 / float(ySize),
+        particleCubeSize / 2.0 + _DamFillRate / 2.0 + float(i % zSize)  * _DamFillRate / float(zSize),
+        1.0
+    );
+
+    pos += snoise(pos + i) * particleCubeSize;
+    pos.w = 1.0;
+
+    _ParticlePositionTexture[id.xy] = pos;
+}
+
+#pragma kernel Preset3
+
+[numthreads(NUM_THREADS, NUM_THREADS, 1)]
+void Preset3 (uint3 id : SV_DispatchThreadID)
+{
+    // Check if we're within texture bounds
+    if (any(id.xy >= uint(_ParticleResolution)))
+        return;
+
+    uint particleCount = _ParticleResolution * _ParticleResolution;
+    uint particlePerDim = uint(ceil(pow(particleCount / (_DamFillRate * _DamFillRate), 1.0 / 3.0)));
+
+    uint xSize = uint(ceil(particlePerDim * _DamFillRate));
+    uint ySize = particlePerDim;
+    uint zSize = uint(ceil(particlePerDim * _DamFillRate));
+
+    float particleCubeSize = 1.0 / float(particlePerDim);
+
+    int i = id.x + id.y * _ParticleResolution;
+
+    float4 pos = float4(
+        particleCubeSize / 2.0 + float(uint(i / uint(zSize * ySize)))  * _DamFillRate / float(xSize),
+        particleCubeSize / 2.0 + float(uint(i / zSize) % ySize) * 0.9 / float(ySize),
+        particleCubeSize / 2.0 + float(i % zSize)  * _DamFillRate / float(zSize),
+        1.0
+    );
+
+    pos += snoise(pos + i) * particleCubeSize;
+    pos.w = 1.0;
+
+    _ParticlePositionTexture[id.xy] = pos;
+}

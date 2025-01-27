@@ -1,6 +1,5 @@
 using UnityEngine;
 using UnityEngine.Rendering;
-using Random = UnityEngine.Random;
 
 public class SphFluidSimulation : MonoBehaviour
 {
@@ -32,17 +31,13 @@ public class SphFluidSimulation : MonoBehaviour
 
     #region Public
 
-    [Header("Presets")]
-    public bool damBreak;
-    public bool wholeArea;
-
     [Header("Initialization")]
+    [Range(0, 2)] public int preset = 1;
     [Range(1024, 4194304)] public int particleNumber = 1024;
     [Range(1, 256)] public int bucketResolution = 256;
     [Range(0.01f, 1f)] public float damFillRate = 0.5f;
 
     [Header("Parameters")]
-    [Range(0.000001f, 0.0001f)] public float particleMass;
     [Range(0f, 0.1f)] public float viscosity = 0.01f;
     [Range(0f, 5f)] public float restDensity = 1.5f;
     [Range(1f, 5000f)] public float gasConstant = 150.0f;
@@ -66,6 +61,7 @@ public class SphFluidSimulation : MonoBehaviour
     private RenderTexture _particleDensityTexture;
     private int _particleTextureResolution;
     private float _effectiveRadius;
+    private float _particleMass;
 
     // Bucket
     private ComputeBuffer _bucketBuffer;
@@ -76,7 +72,7 @@ public class SphFluidSimulation : MonoBehaviour
     private Bounds _bounds;
 
     // Shaders
-    private ComputeShader _bucketShader, _clearShader, _densityShader, _velPosShader, _updateMeshPropertiesShader;
+    private ComputeShader _bucketShader, _clearShader, _densityShader, _velPosShader, _updateMeshPropertiesShader, _initParticlesShader;
     private int _threadGroups;
 
     #endregion
@@ -134,6 +130,7 @@ public class SphFluidSimulation : MonoBehaviour
         _densityShader = Resources.Load<ComputeShader>("Density");
         _velPosShader = Resources.Load<ComputeShader>("VelPos");
         _updateMeshPropertiesShader = Resources.Load<ComputeShader>("UpdateMeshProperties");
+        _initParticlesShader = Resources.Load<ComputeShader>("InitParticles");
 
         _threadGroups = Mathf.CeilToInt((float)_particleTextureResolution / NumThreads);
     }
@@ -176,112 +173,20 @@ public class SphFluidSimulation : MonoBehaviour
 
         _particleMeshPropertiesBuffer = new ComputeBuffer(particleNumber, MeshProperties.Size());
 
-        var particlesPositions = damBreak ? InitializeDamBreak() :
-                                       wholeArea ? InitializeWholeArea() :
-                                       new Vector3[particleNumber];
+        _particleMass = damFillRate / particleNumber;
+
+        // Init  Positions
+        _initParticlesShader.SetInt(ShaderIDs.ParticleResolution, _particleTextureResolution);
+        _initParticlesShader.SetFloat(ShaderIDs.DamFillRate, damFillRate);
+
+        _initParticlesShader.SetTexture(preset, ShaderIDs.ParticlePositionTexture, _particlePositionTextures[Read]);
+
+        _initParticlesShader.Dispatch(preset, _threadGroups, _threadGroups, 1);
 
         particleMaterial.SetBuffer(ShaderIDs.Properties, _particleMeshPropertiesBuffer);
 
-        // Set texture to positions
-        Texture2D particlePositionTexture2D = new(_particleTextureResolution, _particleTextureResolution, TextureFormat.RGBAFloat, false);
-        var particleColors = new Color[particleNumber];
-
-        for (var i = 0; i < particleNumber; i++)
-        {
-            var pos = particlesPositions[i];
-            particleColors[i] = new Color(pos.x, pos.y, pos.z, 1.0f);
-        }
-
-        particlePositionTexture2D.SetPixels(particleColors);
-        particlePositionTexture2D.Apply();
-
-        Graphics.Blit(particlePositionTexture2D, _particlePositionTextures[Read]);
-        Destroy(particlePositionTexture2D);
-
         // Initialize velocities to zero
         ClearTexture2D(_particleVelocityTextures[Read]);
-    }
-
-    private Vector3[] InitializeDamBreak()
-    {
-        particleMass = damFillRate / particleNumber;
-
-        var rotation = Quaternion.identity;
-        var particleScale = new Vector3(particleRadius * 2, particleRadius * 2, particleRadius * 2);
-
-        var particlesPositions = new Vector3[particleNumber];
-        var properties = new MeshProperties[particleNumber];
-
-        var particlePerDim = Mathf.CeilToInt(Mathf.Pow(particleNumber / damFillRate, 1f / 3f));
-
-        int xSize = Mathf.CeilToInt(particlePerDim * damFillRate);
-        int ySize = particlePerDim;
-        int zSize = particlePerDim;
-
-        float particleCubeSize = 1f / particlePerDim;
-
-        for (var i = 0; i < particleNumber; i++)
-        {
-            var position = new Vector3(
-                particleCubeSize / 2f + (float) i / (zSize * ySize) * damFillRate / xSize,
-                particleCubeSize / 2f + (float) i / zSize % ySize * 0.9f / ySize,
-                particleCubeSize / 2f + i % zSize * 1f / zSize
-            );
-
-            position += new Vector3(
-                Mathf.PerlinNoise(position.x, i) * 2 - 1,
-                Mathf.PerlinNoise(position.y, i) * 2 - 1,
-                Mathf.PerlinNoise(position.z, i) * 2 - 1
-            ) * particleCubeSize;
-
-            particlesPositions[i] = position;
-
-            MeshProperties props = new()
-            {
-                Mat = Matrix4x4.TRS(position, rotation, particleScale),
-                Color = Color.blue
-            };
-
-            properties[i] = props;
-        }
-
-        _particleMeshPropertiesBuffer.SetData(properties);
-
-        return particlesPositions;
-    }
-
-    private Vector3[] InitializeWholeArea()
-    {
-        particleMass = damFillRate / particleNumber;
-
-        Quaternion rotation = Quaternion.identity;
-        Vector3 particleScale = new(particleRadius * 2, particleRadius * 2, particleRadius * 2);
-
-        Vector3[] particlesPositions = new Vector3[particleNumber];
-        MeshProperties[] properties = new MeshProperties[particleNumber];
-
-        for (var i = 0; i < particleNumber; i++)
-        {
-            var position = new Vector3(
-                Random.Range(0f, 1f),
-                Random.Range(0f, 1f),
-                Random.Range(0f, 1f)
-            );
-
-            particlesPositions[i] = position;
-
-            MeshProperties props = new()
-            {
-                Mat = Matrix4x4.TRS(position, rotation, particleScale),
-                Color = Color.blue
-            };
-
-            properties[i] = props;
-        }
-
-        _particleMeshPropertiesBuffer.SetData(properties);
-
-        return particlesPositions;
     }
 
     private void InitializeBucketBuffer()
@@ -327,7 +232,7 @@ public class SphFluidSimulation : MonoBehaviour
 
         _densityShader.SetInt(ShaderIDs.NumParticles, particleNumber);
         _densityShader.SetInt(ShaderIDs.BucketResolution, bucketResolution);
-        _densityShader.SetFloat(ShaderIDs.ParticleMass, particleMass);
+        _densityShader.SetFloat(ShaderIDs.ParticleMass, _particleMass);
         _densityShader.SetFloat(ShaderIDs.EffectiveRadius2, _effectiveRadius * _effectiveRadius);
         _densityShader.SetFloat(ShaderIDs.EffectiveRadius9, Mathf.Pow(_effectiveRadius, 9));
         _densityShader.SetVector(ShaderIDs.ParticleResolution, new Vector2(_particleTextureResolution, _particleTextureResolution));
@@ -348,7 +253,7 @@ public class SphFluidSimulation : MonoBehaviour
         _velPosShader.SetInt(ShaderIDs.BucketResolution, bucketResolution);
         _velPosShader.SetFloat(ShaderIDs.EffectiveRadius, _effectiveRadius);
         _velPosShader.SetFloat(ShaderIDs.EffectiveRadius6, Mathf.Pow(_effectiveRadius, 6));
-        _velPosShader.SetFloat(ShaderIDs.ParticleMass, particleMass);
+        _velPosShader.SetFloat(ShaderIDs.ParticleMass, _particleMass);
         _velPosShader.SetFloat(ShaderIDs.TimeStep, dt);
         _velPosShader.SetFloat(ShaderIDs.Viscosity, viscosity);
         _velPosShader.SetFloat(ShaderIDs.GasConst, gasConstant);

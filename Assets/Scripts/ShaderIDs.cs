@@ -29,4 +29,5 @@ public class ShaderIDs
     public static readonly int SimTRS = Shader.PropertyToID("_SimTRS");
     public static readonly int HighSpeed = Shader.PropertyToID("_HighSpeed");
     public static readonly int LowSpeed = Shader.PropertyToID("_LowSpeed");
+    public static readonly int DamFillRate = Shader.PropertyToID("_DamFillRate");
 }
